@@ -1,0 +1,11 @@
+{
+    "cookie_file_path": "cookie.json",
+    "target_url": "https://f.kdocs.cn/ksform/XXXXX#routePromt",
+    "input_name": "输入的姓名",
+    "latitude": 40.000000,
+    "longitude": 120.000000,
+    "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/537.36",
+    "locale": "zh-CN",
+    "accept_language": "zh-CN,zh;q=0.9"
+  }
+  
