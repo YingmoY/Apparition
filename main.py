@@ -163,6 +163,32 @@ async def fill_and_submit_form(page: Page, config: dict):
     logging.info("表单填写并提交完成。")
 
 
+async def update_cookie_file(context: BrowserContext, page: Page, cookie_file_path: str):
+    """
+    从 context 和 page 中读取最新的 Cookies、localStorage，并写入 cookie_file_path
+    """
+    logging.info("更新 cookie.json 中的 Cookies 和 LocalStorage ...")
+    # 读取最新 Cookies
+    cookies = await context.cookies()
+
+    # 读取最新 LocalStorage
+    local_storage_data = []
+    all_keys = await page.evaluate("Object.keys(localStorage)")
+    for key in all_keys:
+        value = await page.evaluate(f"localStorage.getItem('{key}')")
+        local_storage_data.append({"key": key, "value": value})
+
+    user_data = {
+        "cookies": cookies,
+        "local_storage": local_storage_data
+    }
+
+    with open(cookie_file_path, "w", encoding="utf-8") as f:
+        json.dump(user_data, f, ensure_ascii=False, indent=4)
+
+    logging.info(f"已更新 {cookie_file_path} 文件。")
+
+
 async def main():
     configure_logging()
 
@@ -182,8 +208,8 @@ async def main():
         # 打开新页面
         page = await context.new_page()
 
-        # 如果已加载 Cookie，则直接导航到目标页面后再应用 LocalStorage
         if success:
+            # Cookie 已加载 -> 直接访问目标页面
             logging.info(f"访问目标页面：{config['target_url']} ...")
             await page.goto(config["target_url"])  # 先导航到同域
             await apply_local_storage(page, cookie_file_path)  # 再设置 localStorage
@@ -203,6 +229,9 @@ async def main():
 
         # 执行后续流程：如填写表单
         await fill_and_submit_form(page, config)
+
+        # 更新 cookie 文件
+        await update_cookie_file(context, page, cookie_file_path)
 
         # 关闭浏览器
         await browser.close()
