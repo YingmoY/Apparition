@@ -115,8 +115,15 @@ async def apply_local_storage(page: Page, cookie_file_path: str):
         for item in local_storage_items:
             key = item["key"]
             value = item["value"]
-            # 注意：此时 page 已经在正确的域 (target_url)，才能成功访问 localStorage
-            await page.evaluate(f"localStorage.setItem('{key}', '{value}')")
+            # 改用传参，而不是字符串拼接，避免语法错误
+            await page.evaluate(
+                """
+                ([k, v]) => {
+                    localStorage.setItem(k, v);
+                }
+                """,
+                [key, value]
+            )
     else:
         logging.info("localStorage 数据为空，无需设置。")
 
