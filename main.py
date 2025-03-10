@@ -167,6 +167,8 @@ async def fill_and_submit_form(page: Page, config: dict):
     button_circle = page.locator(circle_button_selector)
     await button_circle.click()
 
+    # 等待页面加载完成并判断是否成功
+    await page.get_by_role("img", name="填写成功").wait_for(state="visible")
     logging.info("表单填写并提交完成。")
 
 
@@ -239,6 +241,9 @@ async def main():
 
         # 更新 cookie 文件
         await update_cookie_file(context, page, cookie_file_path)
+
+        # 调试时暂停
+        # await page.pause()
 
         # 关闭浏览器
         await browser.close()
