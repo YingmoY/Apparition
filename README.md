@@ -92,6 +92,13 @@ ___
 python main.py
 ```
 
+**强烈建议搭配**[System Scheduler](https://www.splinterware.com/download/ssfree.exe)**使用**，实现定时自动填报。
+
+- Event Type: Run Application
+- Application: python
+- Parameters: main.py
+- Working Dir: main.py 所在目录
+
 ### **2️⃣ 首次运行**
 
 - **如果 `cookie.json` 不存在**，程序会自动打开浏览器，提示你手动登录网站
