@@ -45,13 +45,14 @@ async def create_browser_context(p, config: dict, headless: bool = False) -> tup
 async def manual_login_and_save_cookies(config: dict):
     """
     引导用户手动登录并将 Cookies、LocalStorage 保存至 cookie.json 文件
+    
+    这里修复了原先的问题，确保在创建浏览器时也使用了 JSON 配置中的语言/地区。
     """
     logging.info("准备打开浏览器进行手动登录...")
 
     async with async_playwright() as p:
-        # 注意：手动登录需要可视化，故 headless=False
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context(user_agent=config["user_agent"])
+        # 使用相同的函数创建上下文，确保与 JSON 配置中指定的语言地区保持一致
+        browser, context = await create_browser_context(p, config, headless=False)
         page = await context.new_page()
 
         target_url = config["target_url"]
@@ -65,7 +66,14 @@ async def manual_login_and_save_cookies(config: dict):
         all_keys = await page.evaluate("Object.keys(localStorage)")
         local_storage_data = []
         for key in all_keys:
-            value = await page.evaluate(f"localStorage.getItem('{key}')")
+            value = await page.evaluate(
+                """
+                ([k]) => {
+                    return localStorage.getItem(k);
+                }
+                """,
+                [key]
+            )
             local_storage_data.append({"key": key, "value": value})
 
         user_data = {
@@ -81,31 +89,22 @@ async def manual_login_and_save_cookies(config: dict):
         await browser.close()
 
 
-async def apply_cookies_to_context(context: BrowserContext, cookie_file_path: str) -> bool:
+async def apply_cookies_to_context(context: BrowserContext, cookie_file_path: str):
     """
-    若 cookie_file_path 存在则将 Cookies 加入 context 并返回 True，否则返回 False
+    将 Cookies 加入 context（不做检查，谁调用该函数谁先判断是否需要）
     """
-    if not os.path.exists(cookie_file_path):
-        logging.info(f"未找到 {cookie_file_path}，需要进行手动登录以获取 Cookies。")
-        return False
-
-    logging.info(f"加载已有 Cookies：{cookie_file_path}")
     with open(cookie_file_path, "r", encoding="utf-8") as f:
         user_data = json.load(f)
 
     cookies = user_data.get("cookies", [])
     if cookies:
         await context.add_cookies(cookies)
-    return True
 
 
 async def apply_local_storage(page: Page, cookie_file_path: str):
     """
     在已经导航到同源页面的前提下，将 localStorage 数据写入
     """
-    if not os.path.exists(cookie_file_path):
-        return
-
     with open(cookie_file_path, "r", encoding="utf-8") as f:
         user_data = json.load(f)
 
@@ -115,7 +114,7 @@ async def apply_local_storage(page: Page, cookie_file_path: str):
         for item in local_storage_items:
             key = item["key"]
             value = item["value"]
-            # 改用传参，而不是字符串拼接，避免语法错误
+            # 使用 args 传递，避免字符串拼接
             await page.evaluate(
                 """
                 ([k, v]) => {
@@ -172,6 +171,27 @@ async def fill_and_submit_form(page: Page, config: dict):
     logging.info("表单填写并提交完成。")
 
 
+async def verify_cookies_strict(page: Page) -> bool:
+    """
+    若 verify_cookies = "strict" 时执行的严格验证逻辑
+    如果浏览器页面出现文字 "必须先登录才能填写哦"，判定 Cookie 已失效
+    """
+    logging.info("执行严格 Cookie 验证 ...")
+    
+    # 确保页面已加载
+    await page.wait_for_load_state("load")
+    await page.wait_for_load_state("networkidle")
+
+    prompt_locator = page.locator("text=必须先登录才能填写哦")
+    if await prompt_locator.is_visible():
+        logging.warning("检测到提示 '必须先登录才能填写哦'，Cookie 可能已失效。")
+        return False
+    
+    # 如果未检测到提示文字，则判定 Cookie 有效
+    logging.info("严格验证通过，Cookie 有效。")
+    return True
+
+
 async def update_cookie_file(context: BrowserContext, page: Page, cookie_file_path: str):
     """
     从 context 和 page 中读取最新的 Cookies、localStorage，并写入 cookie_file_path
@@ -184,7 +204,14 @@ async def update_cookie_file(context: BrowserContext, page: Page, cookie_file_pa
     local_storage_data = []
     all_keys = await page.evaluate("Object.keys(localStorage)")
     for key in all_keys:
-        value = await page.evaluate(f"localStorage.getItem('{key}')")
+        value = await page.evaluate(
+            """
+            ([k]) => {
+                return localStorage.getItem(k);
+            }
+            """,
+            [key]
+        )
         local_storage_data.append({"key": key, "value": value})
 
     user_data = {
@@ -198,56 +225,95 @@ async def update_cookie_file(context: BrowserContext, page: Page, cookie_file_pa
     logging.info(f"已更新 {cookie_file_path} 文件。")
 
 
+async def standard_cookie_verification(p, config: dict, headless: bool = True) -> tuple[Browser, BrowserContext, Page]:
+    """
+    标准的 Cookie 验证逻辑：
+      1. 创建浏览器上下文
+      2. 如果 cookie.json 存在，则加载并刷新
+      3. 如果 cookie.json 不存在，则手动登录并保存
+      4. 再次创建浏览器上下文并加载应用
+    返回 (browser, context, page)
+    """
+    cookie_file_path = config["cookie_file_path"]
+    browser, context = await create_browser_context(p, config, headless=headless)
+    page = await context.new_page()
+
+    if os.path.exists(cookie_file_path):
+        logging.info("cookie.json 存在，加载 Cookie 和 LocalStorage")
+        await apply_cookies_to_context(context, cookie_file_path)
+        await page.goto(config["target_url"])
+        await apply_local_storage(page, cookie_file_path)
+        await page.reload()
+    else:
+        logging.info("cookie.json 不存在，进行手动登录")
+        await browser.close()
+        await manual_login_and_save_cookies(config)
+        # 重新打开浏览器并加载 Cookie
+        browser, context = await create_browser_context(p, config, headless=headless)
+        page = await context.new_page()
+        await apply_cookies_to_context(context, cookie_file_path)
+        await page.goto(config["target_url"])
+        await apply_local_storage(page, cookie_file_path)
+        await page.reload()
+
+    return browser, context, page
+
+
 async def main():
     configure_logging()
-
-    # 加载配置
     config = load_config("config.json")
     cookie_file_path = config["cookie_file_path"]
+    verify_mode = config.get("verify_cookies", "enable")  # 默认为 enable
 
-    logging.info("开始执行程序...")
+    logging.info(f"开始执行程序，verify_cookies = {verify_mode}")
 
     async with async_playwright() as p:
-        # 创建浏览器上下文（地理位置、语言等信息）
-        browser, context = await create_browser_context(p, config, headless=True)
-
-        # 先尝试加载 Cookie
-        success = await apply_cookies_to_context(context, cookie_file_path)
-
-        # 打开新页面
-        page = await context.new_page()
-
-        if success:
-            # Cookie 已加载 -> 直接访问目标页面
-            logging.info(f"访问目标页面：{config['target_url']} ...")
-            await page.goto(config["target_url"])  # 先导航到同域
-            await apply_local_storage(page, cookie_file_path)  # 再设置 localStorage
-            await page.reload()  # 刷新页面使其生效
-        else:
-            # Cookie 不存在 -> 先手动登录
-            await browser.close()
-            await manual_login_and_save_cookies(config)
-            # 登录后重开一个浏览器上下文
+        if verify_mode == "disable":
+            # 不验证文件是否存在，也不加载和刷新 Cookie
+            logging.info("跳过加载 cookie.json")
             browser, context = await create_browser_context(p, config, headless=True)
             page = await context.new_page()
-            # 加载 Cookie 再去访问目标页面
-            await apply_cookies_to_context(context, cookie_file_path)
             await page.goto(config["target_url"])
-            await apply_local_storage(page, cookie_file_path)
-            await page.reload()
+            # 后续逻辑（如需要填写表单等）
+            await fill_and_submit_form(page, config)
 
-        # 执行后续流程：如填写表单
-        await fill_and_submit_form(page, config)
+            # disable 模式通常不更新文件。如果你希望更新文件，可自行取消下面的注释
+            # await update_cookie_file(context, page, cookie_file_path)
 
-        # 更新 cookie 文件
-        await update_cookie_file(context, page, cookie_file_path)
+        elif verify_mode == "enable":
+            # 调用标准验证逻辑
+            browser, context, page = await standard_cookie_verification(p, config, headless=True)
+            # 后续逻辑
+            await fill_and_submit_form(page, config)
+            # 更新 cookie 文件
+            await update_cookie_file(context, page, cookie_file_path)
 
-        # 调试时暂停
-        # await page.pause()
+        elif verify_mode == "strict":
+            # 先执行标准验证
+            browser, context, page = await standard_cookie_verification(p, config, headless=True)
+            # 然后执行严格验证
+            is_ok = await verify_cookies_strict(page)
+            if not is_ok:
+                logging.warning("严格验证不通过，需重新登录")
+                await browser.close()
+                await manual_login_and_save_cookies(config)
+                # 重新加载
+                browser, context, page = await standard_cookie_verification(p, config, headless=True)
+            else:
+                logging.info("严格验证通过，使用已有 Cookie 登录状态")
 
-        # 关闭浏览器
-        await browser.close()
-        logging.info("浏览器进程已关闭，程序结束。")
+            # 后续逻辑
+            await fill_and_submit_form(page, config)
+            # 更新 cookie 文件
+            await update_cookie_file(context, page, cookie_file_path)
+
+        # 统一退出
+        logging.info("浏览器进程即将关闭 ...")
+        try:
+            await browser.close()
+        except:
+            pass
+        logging.info("程序结束。")
 
 
 if __name__ == "__main__":
