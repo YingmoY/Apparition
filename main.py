@@ -135,6 +135,14 @@ async def fill_and_submit_form(page: Page, config: dict):
 
     logging.info("等待页面加载完成...")
     await page.wait_for_load_state("load")
+    await page.wait_for_load_state("networkidle")
+
+    # 如果检测到“此打卡周期内仅可提交一次”的提示，直接退出
+    prompt_text = "此打卡周期内仅可提交一次"
+    prompt_locator = page.locator(f"text={prompt_text}")
+    if await prompt_locator.is_visible():
+        logging.warning("已打卡，无需再次提交...")
+        return
 
     # 输入指定的文本
     logging.info(f"往文本框中填写内容：{input_name}")
@@ -245,7 +253,7 @@ async def standard_cookie_verification(p, config: dict, headless: bool = True) -
         await apply_local_storage(page, cookie_file_path)
         await page.reload()
     else:
-        logging.info("cookie.json 不存在，进行手动登录")
+        logging.w("cookie.json 不存在，进行手动登录")
         await browser.close()
         await manual_login_and_save_cookies(config)
         # 重新打开浏览器并加载 Cookie
