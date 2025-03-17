@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apparition!</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: url('https://images.unsplash.com/photo-1519682577862-22b62b24e493?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80') no-repeat center center fixed;
+            background-size: cover;
+            min-height: 100vh;
+            font-family: 'Times New Roman', serif;
+            color: #fff;
+        }
+        .navbar {
+            background: rgba(0, 0, 0, 0.8) !important;
+            border-bottom: 2px solid #ffd700;
+        }
+        .navbar-brand {
+            color: #ffd700 !important;
+            font-size: 1.5rem;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+        .card {
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.2);
+            margin-bottom: 2rem;
+        }
+        .card-header {
+            background: rgba(0, 0, 0, 0.8);
+            border-bottom: 1px solid rgba(255, 215, 0, 0.3);
+            color: #ffd700;
+        }
+        .table {
+            color: #fff;
+        }
+        .table thead th {
+            border-bottom: 2px solid rgba(255, 215, 0, 0.3);
+            color: #ffd700;
+        }
+        .table td {
+            border-color: rgba(255, 215, 0, 0.1);
+        }
+        .btn-primary {
+            background: linear-gradient(45deg, #ffd700, #ffa500);
+            border: none;
+            color: #000;
+            font-weight: bold;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(45deg, #ffa500, #ffd700);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        }
+        .btn-danger {
+            background: linear-gradient(45deg, #dc3545, #c82333);
+            border: none;
+        }
+        .badge {
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem;
+        }
+        .modal-content {
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            color: #fff;
+        }
+        .modal-header {
+            border-bottom: 1px solid rgba(255, 215, 0, 0.3);
+        }
+        .modal-footer {
+            border-top: 1px solid rgba(255, 215, 0, 0.3);
+        }
+        .form-control {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            color: #fff;
+        }
+        .form-control:focus {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #ffd700;
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+        }
+        .nav-link {
+            color: #ffd700 !important;
+        }
+        .nav-link:hover {
+            color: #ffa500 !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">Apparition!</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#configs">配置管理</a>
+                    </li>
+                </ul>
+                <a href="{{ url_for('logout') }}" class="btn btn-outline-warning">退出魔法空间</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-info">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- 配置管理部分 -->
+        <div id="configs" class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">魔法配置管理</h5>
+            </div>
+            <div class="card-body">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">系统信息</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>操作系统：</strong>{{ system_info.os }}</p>
+                        <p><strong>Python版本：</strong>{{ system_info.python_version }}</p>
+                    </div>
+                </div>
+                <form action="{{ url_for('upload_config') }}" method="post" enctype="multipart/form-data" class="mb-4">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="name" class="form-label">配置名称</label>
+                                <input type="text" class="form-control" id="name" name="name" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="config_file" class="form-label">配置文件 (JSON)</label>
+                                <input type="file" class="form-control" id="config_file" name="config_file" accept=".json" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="cookie_file" class="form-label">Cookie文件 (JSON, 可选)</label>
+                                <input type="file" class="form-control" id="cookie_file" name="cookie_file" accept=".json">
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">添加新配置</button>
+                </form>
+
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>名称</th>
+                                <th>目标URL</th>
+                                <th>Cookie状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if configs %}
+                                {% for config in configs %}
+                                <tr>
+                                    <td>{{ config.id }}</td>
+                                    <td>{{ config.name }}</td>
+                                    <td>{{ config.target_url }}</td>
+                                    <td>
+                                        {% if config.cookie_data %}
+                                            <span class="badge bg-success">已上传</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">未上传</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-primary" 
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#uploadCookieModal{{ config.id }}">
+                                            上传Cookie
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-danger"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#deleteConfigModal{{ config.id }}">
+                                            删除
+                                        </button>
+                                    </td>
+                                </tr>
+
+                                <!-- Upload Cookie Modal -->
+                                <div class="modal fade" id="uploadCookieModal{{ config.id }}" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">上传Cookie - {{ config.name }}</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <form action="{{ url_for('upload_cookie') }}" method="post" enctype="multipart/form-data">
+                                                    <input type="hidden" name="config_id" value="{{ config.id }}">
+                                                    <div class="mb-3">
+                                                        <label for="cookie_file{{ config.id }}" class="form-label">Cookie文件 (JSON)</label>
+                                                        <input type="file" class="form-control" 
+                                                               id="cookie_file{{ config.id }}" 
+                                                               name="cookie_file" 
+                                                               accept=".json" required>
+                                                    </div>
+                                                    <button type="submit" class="btn btn-primary">上传</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Delete Config Modal -->
+                                <div class="modal fade" id="deleteConfigModal{{ config.id }}" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">删除配置 - {{ config.name }}</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <p>确定要删除这个配置吗？此操作不可恢复。</p>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <form action="{{ url_for('delete_config_route') }}" method="post">
+                                                    <input type="hidden" name="config_id" value="{{ config.id }}">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                                    <button type="submit" class="btn btn-danger">确认删除</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center">暂无配置</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 

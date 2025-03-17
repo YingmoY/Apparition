@@ -1,0 +1,25 @@
+{
+    "host": "0.0.0.0",
+    "port": 5000,
+    "debug": true,
+    "database_path": "apparition.db",
+    "upload_folder": "uploads",
+    "allowed_extensions": ["json"],
+    "execution": {
+        "mode": "concurrent",
+        "max_retries": 3,
+        "timeout_seconds": 300
+    },
+    "users": [
+        {
+            "username": "harry",
+            "password": "expecto_patronum",
+            "role": "admin"
+        },
+        {
+            "username": "hermione",
+            "password": "wingardium_leviosa",
+            "role": "admin"
+        }
+    ]
+} 

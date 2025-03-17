@@ -158,9 +158,11 @@ async def fill_and_submit_form(page: Page, config: dict):
     logging.info("等待页面再次加载完成 (load + networkidle) ...")
     await page.wait_for_load_state("load")
     await page.wait_for_load_state("networkidle")
+    await page.locator("text=正在定位").wait_for(state="hidden")
+    await asyncio.sleep(3)
 
     # 检查是否出现提示信息
-    prompt_text = "您之前填写过此打卡，是否接着上次继续填写"
+    prompt_text = "您之前填写过此打卡"
     prompt_locator = page.locator(f"text={prompt_text}")
     if await prompt_locator.is_visible():
         logging.info("检测到提示信息，点击 '取消' 按钮...")
