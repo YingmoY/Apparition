@@ -30,12 +30,12 @@ python --version
 
 如果未安装，请前往 [Python 官网](https://www.python.org/downloads/) 下载并安装最新版本。
 
-### **2️⃣ 安装 Playwright**
+### **2️⃣ 安装依赖**
 
-使用 `pip` 安装 `playwright`：
+使用 `pip` 安装依赖：
 
 ``` bash
-pip install playwright
+pip install -r requirements.txt
 ```
 
 ### **3️⃣ 安装 Chromium**
