@@ -9,4 +9,6 @@ venv.bak/
 
 # User config & Cookies
 config.json
+push-config.json
 cookie.json
+apparition.db
