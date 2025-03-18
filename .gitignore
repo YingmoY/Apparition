@@ -11,3 +11,4 @@ venv.bak/
 config.json
 push-config.json
 cookie.json
+apparition.db

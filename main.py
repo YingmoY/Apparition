@@ -255,7 +255,7 @@ async def standard_cookie_verification(p, config: dict, headless: bool = True) -
         await apply_local_storage(page, cookie_file_path)
         await page.reload()
     else:
-        logging.w("cookie.json 不存在，进行手动登录")
+        logging.warning("cookie.json 不存在，进行手动登录")
         await browser.close()
         await manual_login_and_save_cookies(config)
         # 重新打开浏览器并加载 Cookie
@@ -292,7 +292,7 @@ async def main():
 
         elif verify_mode == "enable":
             # 调用标准验证逻辑
-            browser, context, page = await standard_cookie_verification(p, config, headless=True)
+            browser, context, page = await standard_cookie_verification(p, config, headless=False)
             # 后续逻辑
             await fill_and_submit_form(page, config)
             # 更新 cookie 文件
