@@ -5,6 +5,7 @@ from typing import List, Dict
 import os
 from schema import get_all_configs
 from main import configure_logging, create_browser_context, fill_and_submit_form
+from push_notification import push
 from playwright.async_api import async_playwright
 import asyncio.exceptions
 
@@ -70,6 +71,7 @@ async def process_single_config(config: Dict, max_retries: int, timeout_seconds:
                             timeout=timeout_seconds
                         )
                         logging.info(f"配置 {config['name']} (ID: {config['id']}) 处理成功")
+                        push(f"配置 {config['name']} (ID: {config['id']}) 打卡成功", "")
                         return True
                     except asyncio.exceptions.TimeoutError:
                         logging.warning(f"配置 {config['name']} (ID: {config['id']}) 执行超时")
@@ -88,6 +90,7 @@ async def process_single_config(config: Dict, max_retries: int, timeout_seconds:
                 await asyncio.sleep(2)  # 重试前等待2秒
             else:
                 logging.error(f"配置 {config['name']} (ID: {config['id']}) 达到最大重试次数 ({max_retries})，放弃处理")
+                push(f"配置 {config['name']} (ID: {config['id']}) 打卡失败", f"达到最大重试次数 ({max_retries})，放弃处理")
                 return False
     
     return False
@@ -126,6 +129,7 @@ async def process_all_configs():
     success_count = sum(1 for r in results if r)
     fail_count = len(results) - success_count
     logging.info(f"任务执行完成：成功 {success_count} 个，失败 {fail_count} 个")
+    push("所有配置处理完成", f"成功 {success_count} 个，失败 {fail_count} 个")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,15 @@
+{
+    "service": "choose your service", 
+    "Bark": {
+        "url": "https://api.day.app",
+        "token": "your bark token"
+    },
+    "Gotify": {
+        "url": "https://push.yourdomain.com",
+        "token": "your gotify token"
+    },
+    "ServerChan": {
+        "url": "https://sctapi.ftqq.com",
+        "sendkey": "your sendkey"
+    }
+}
