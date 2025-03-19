@@ -143,6 +143,12 @@ async def fill_and_submit_form(page: Page, config: dict):
     if await prompt_locator.is_visible():
         logging.warning("已打卡，无需再次提交...")
         return
+    # 如果检测到“请在规定时间内打卡”的提示，直接退出
+    prompt_text = "请在规定时间内打卡"
+    prompt_locator = page.locator(f"text={prompt_text}")
+    if await prompt_locator.is_visible():
+        logging.warning("不在打卡时段，跳过...")
+        return
 
     # 输入指定的文本
     logging.info(f"往文本框中填写内容：{input_name}")
