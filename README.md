@@ -2,7 +2,7 @@
 
 ___
 
-**📢 服务器端请参考：**[Server.md]()
+**📢 服务器端请参考：**[Server.md](https://github.com/YingmoY/Apparition/blob/main/Server.md)
 
 ___
 
