@@ -2,6 +2,10 @@
 
 ___
 
+**📢 服务器端请参考：**[Server.md]()
+
+___
+
 ## **📌 项目简介**
 
 本项目的灵感来源于哈利·波特中的 **"幻影显形"**（Apparition），意为在无声无息间完成某项任务。本项目利用 **Playwright** 进行 **自动化网页填报**，通过 **模拟浏览器操作** 进行登录、加载用户 Cookies 和 LocalStorage，并自动提交指定的表单内容，如每日签到、虚拟定位打卡和自动填报等。
@@ -35,7 +39,7 @@ python --version
 使用 `pip` 安装依赖：
 
 ``` bash
-pip install -r requirements.txt
+pip install playwright
 ```
 
 ### **3️⃣ 安装 Chromium**
