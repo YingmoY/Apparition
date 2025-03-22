@@ -298,7 +298,7 @@ async def main():
 
         elif verify_mode == "enable":
             # 调用标准验证逻辑
-            browser, context, page = await standard_cookie_verification(p, config, headless=False)
+            browser, context, page = await standard_cookie_verification(p, config, headless=True)
             # 后续逻辑
             await fill_and_submit_form(page, config)
             # 更新 cookie 文件
