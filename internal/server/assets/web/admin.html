@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apparition - 管理后台</title>
+  <link rel="stylesheet" href="https://cdn.staticfile.org/layui/2.9.17/css/layui.css" />
+  <style>
+    body { margin: 0; background: linear-gradient(130deg, #fff8f1, #fde9da); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+    .panel { max-width: 980px; margin: 24px auto; background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 10px 30px rgba(110, 63, 15, 0.18); }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h2>管理员后台</h2>
+    <p>当前为第一版管理页，后续将补充用户与任务管理表格。</p>
+    <button id="back" class="layui-btn layui-btn-primary">返回控制台</button>
+    <button id="logout" class="layui-btn layui-btn-danger">退出登录</button>
+    <hr />
+    <div id="status">正在校验权限...</div>
+  </div>
+  <script src="https://cdn.staticfile.org/layui/2.9.17/layui.js"></script>
+  <script>
+    layui.use(["layer"], function () {
+      const layer = layui.layer;
+      fetch("/api/v1/auth/me").then(function(res){ return res.json().then(function(data){ return {res:res, data:data}; }); }).then(function(result){
+        if (!result.res.ok) {
+          location.href = "/login";
+          return;
+        }
+        if (result.data.data.role !== "admin") {
+          layer.msg("无管理员权限");
+          setTimeout(function(){ location.href = "/dashboard"; }, 600);
+          return;
+        }
+        document.getElementById("status").textContent = "管理员身份已确认: " + result.data.data.email;
+      });
+      document.getElementById("back").addEventListener("click", function(){ location.href = "/dashboard"; });
+      document.getElementById("logout").addEventListener("click", async function(){
+        await fetch("/api/v1/auth/logout", {method:"POST"});
+        location.href = "/login";
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apparition - 控制台</title>
+  <link rel="stylesheet" href="https://cdn.staticfile.org/layui/2.9.17/css/layui.css" />
+  <style>
+    body { margin: 0; background: #f6f8fc; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+    .container { max-width: 1100px; margin: 24px auto; padding: 0 14px; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); padding: 16px; margin-bottom: 16px; }
+    .qr { width: 220px; height: 220px; border: 1px dashed #c6cfdd; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: #f8fbff; }
+    .qr img { max-width: 100%; max-height: 100%; }
+    .label { color: #56637a; font-size: 13px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <h2 style="margin:0;">用户控制台</h2>
+        <div id="userInfo" class="label">加载中...</div>
+      </div>
+      <div>
+        <button id="toAdmin" class="layui-btn layui-btn-primary">管理员后台</button>
+        <button id="logout" class="layui-btn layui-btn-danger">退出登录</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>WPS 二维码登录</h3>
+      <button id="createSession" class="layui-btn">创建登录会话</button>
+      <span id="sessionText" class="label"></span>
+      <div style="margin-top:12px; display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap;">
+        <div class="qr" id="qrBox">等待生成二维码</div>
+        <div>
+          <div id="statusText" class="label">状态：-</div>
+          <div id="tsText" class="label">时间戳：-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>通知渠道</h3>
+      <div class="layui-row layui-col-space16">
+        <div class="layui-col-md4">
+          <input id="emailTo" class="layui-input" placeholder="邮箱通知收件人" />
+          <button id="saveEmail" class="layui-btn layui-btn-fluid" style="margin-top:8px;">保存 Email 渠道</button>
+        </div>
+        <div class="layui-col-md4">
+          <input id="gotifyUrl" class="layui-input" placeholder="Gotify URL" />
+          <input id="gotifyToken" class="layui-input" placeholder="Gotify Token" style="margin-top:8px;" />
+          <button id="saveGotify" class="layui-btn layui-btn-normal layui-btn-fluid" style="margin-top:8px;">保存 Gotify</button>
+        </div>
+        <div class="layui-col-md4">
+          <input id="barkUrl" class="layui-input" placeholder="Bark URL" />
+          <input id="barkKey" class="layui-input" placeholder="Bark Device Key" style="margin-top:8px;" />
+          <button id="saveBark" class="layui-btn layui-btn-warm layui-btn-fluid" style="margin-top:8px;">保存 Bark</button>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <button id="testEmail" class="layui-btn layui-btn-primary">测试 Email</button>
+        <button id="testGotify" class="layui-btn layui-btn-primary">测试 Gotify</button>
+        <button id="testBark" class="layui-btn layui-btn-primary">测试 Bark</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>打卡配置</h3>
+      <div class="layui-row layui-col-space10">
+        <div class="layui-col-md6"><input id="cfgTargetUrl" class="layui-input" placeholder="target_url" /></div>
+        <div class="layui-col-md6"><input id="cfgInputName" class="layui-input" placeholder="input_name" /></div>
+        <div class="layui-col-md6"><input id="cfgLongitude" class="layui-input" placeholder="longitude" /></div>
+        <div class="layui-col-md6"><input id="cfgLatitude" class="layui-input" placeholder="latitude" /></div>
+        <div class="layui-col-md12"><input id="cfgAddress" class="layui-input" placeholder="formatted_address" /></div>
+      </div>
+      <button id="saveProfile" class="layui-btn" style="margin-top:10px;">保存打卡配置</button>
+    </div>
+
+    <div class="card">
+      <h3>调度任务</h3>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <select id="jobType" class="layui-select">
+          <option value="daily">daily</option>
+          <option value="fixed_interval">fixed_interval</option>
+        </select>
+        <input id="jobValue" class="layui-input" style="max-width: 240px;" placeholder="daily: HH:MM / interval: 秒" />
+        <button id="createJob" class="layui-btn layui-btn-normal">创建任务</button>
+      </div>
+      <table class="layui-table" style="margin-top:10px;">
+        <thead><tr><th>ID</th><th>类型</th><th>值</th><th>下次执行</th><th>操作</th></tr></thead>
+        <tbody id="jobsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="https://cdn.staticfile.org/layui/2.9.17/layui.js"></script>
+  <script>
+    layui.use(["layer"], function () {
+      const layer = layui.layer;
+      let currentSession = "";
+      let pollTimer = 0;
+
+      async function api(url, options) {
+        const res = await fetch(url, options || {});
+        if (res.headers.get("content-type") && res.headers.get("content-type").includes("application/json")) {
+          const data = await res.json();
+          return { res, data };
+        }
+        return { res, data: null };
+      }
+
+      async function loadMe() {
+        const { res, data } = await api("/api/v1/auth/me");
+        if (!res.ok) {
+          location.href = "/login";
+          return;
+        }
+        document.getElementById("userInfo").textContent = "用户: " + data.data.email + " | 角色: " + data.data.role;
+      }
+
+      async function loadNotifyChannels() {
+        const { res, data } = await api("/api/v1/notify/channels");
+        if (!res.ok) {
+          return;
+        }
+        const cfg = data.data || {};
+        if (cfg.email && cfg.email.config && cfg.email.config.to_email) {
+          document.getElementById("emailTo").value = cfg.email.config.to_email;
+        }
+        if (cfg.gotify && cfg.gotify.config) {
+          document.getElementById("gotifyUrl").value = cfg.gotify.config.server_url || "";
+          document.getElementById("gotifyToken").value = cfg.gotify.config.app_token || "";
+        }
+        if (cfg.bark && cfg.bark.config) {
+          document.getElementById("barkUrl").value = cfg.bark.config.server_url || "";
+          document.getElementById("barkKey").value = cfg.bark.config.device_key || "";
+        }
+      }
+
+      async function loadClockinProfile() {
+        const { res, data } = await api("/api/v1/clockin/profile");
+        if (!res.ok || !data.data) {
+          return;
+        }
+        document.getElementById("cfgTargetUrl").value = data.data.target_url || "";
+        document.getElementById("cfgInputName").value = data.data.input_name || "";
+        document.getElementById("cfgLongitude").value = data.data.longitude || "";
+        document.getElementById("cfgLatitude").value = data.data.latitude || "";
+        document.getElementById("cfgAddress").value = data.data.formatted_address || "";
+      }
+
+      async function saveClockinProfile() {
+        const payload = {
+          target_url: document.getElementById("cfgTargetUrl").value.trim(),
+          input_name: document.getElementById("cfgInputName").value.trim(),
+          longitude: Number(document.getElementById("cfgLongitude").value || "0"),
+          latitude: Number(document.getElementById("cfgLatitude").value || "0"),
+          formatted_address: document.getElementById("cfgAddress").value.trim(),
+          user_agent: navigator.userAgent,
+          locale: "zh-CN",
+          accept_language: "zh-CN,zh;q=0.9",
+          verify_cookies: "enable",
+          timezone: "Asia/Shanghai"
+        };
+        const { res, data } = await api("/api/v1/clockin/profile", {
+          method: "PUT",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          layer.msg((data && data.message) || "保存失败");
+          return;
+        }
+        layer.msg("配置保存成功");
+      }
+
+      async function loadJobs() {
+        const { res, data } = await api("/api/v1/clockin/jobs");
+        if (!res.ok) {
+          return;
+        }
+        const body = document.getElementById("jobsBody");
+        body.innerHTML = "";
+        (data.data || []).forEach(function(job) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = "<td>" + job.id + "</td>" +
+                         "<td>" + job.schedule_type + "</td>" +
+                         "<td>" + job.schedule_value + "</td>" +
+                         "<td>" + job.next_run_at + "</td>" +
+                         "<td><button class='layui-btn layui-btn-xs' data-id='" + job.id + "'>立即执行</button></td>";
+          body.appendChild(tr);
+        });
+      }
+
+      async function createJob() {
+        const payload = {
+          enabled: true,
+          schedule_type: document.getElementById("jobType").value,
+          schedule_value: document.getElementById("jobValue").value.trim(),
+          retry_policy: "immediate_once"
+        };
+        const { res, data } = await api("/api/v1/clockin/jobs", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          layer.msg((data && data.message) || "创建失败");
+          return;
+        }
+        layer.msg("任务创建成功");
+        loadJobs();
+      }
+
+      async function runJob(id) {
+        const { res, data } = await api("/api/v1/clockin/jobs/" + id + "/run", { method: "POST" });
+        if (!res.ok) {
+          layer.msg((data && data.message) || "执行失败");
+          return;
+        }
+        layer.msg("执行结果: " + data.data.status + " - " + data.data.message);
+        loadJobs();
+      }
+
+      async function putChannel(url, payload) {
+        const { res, data } = await api(url, {
+          method: "PUT",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          layer.msg(data ? data.message : "保存失败");
+          return;
+        }
+        layer.msg("保存成功");
+      }
+
+      async function testChannel(channel) {
+        const { res, data } = await api("/api/v1/notify/test", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ channel: channel })
+        });
+        if (!res.ok) {
+          layer.msg((data && data.message) || "测试失败");
+          return;
+        }
+        layer.msg("测试消息已发送");
+      }
+
+      async function createWpsSession() {
+        const { res, data } = await api("/api/v1/wps/sessions", { method: "POST" });
+        if (!res.ok) {
+          layer.msg(data ? data.message : "创建会话失败");
+          return;
+        }
+        currentSession = data.data.session_id;
+        document.getElementById("sessionText").textContent = "会话ID: " + currentSession;
+        refreshQR();
+        pollStatus();
+      }
+
+      function refreshQR() {
+        if (!currentSession) return;
+        const ts = Date.now();
+        document.getElementById("tsText").textContent = "时间戳: " + ts;
+        document.getElementById("qrBox").innerHTML = '<img alt="qr" src="/api/v1/wps/sessions/' + currentSession + '/qr?ts=' + ts + '" />';
+      }
+
+      async function pollStatus() {
+        clearInterval(pollTimer);
+        pollTimer = setInterval(async function () {
+          const { res, data } = await api("/api/v1/wps/sessions/" + currentSession + "/status");
+          if (!res.ok) {
+            return;
+          }
+          const status = data.data.status;
+          document.getElementById("statusText").textContent = "状态: " + status + " - " + (data.data.message || "");
+          if (status === "confirmed" || status === "failed") {
+            clearInterval(pollTimer);
+          }
+        }, 2500);
+      }
+
+      document.getElementById("createSession").addEventListener("click", createWpsSession);
+      document.getElementById("saveEmail").addEventListener("click", function () {
+        putChannel("/api/v1/notify/channels/email", { enabled: true, to_email: document.getElementById("emailTo").value.trim() });
+      });
+      document.getElementById("saveGotify").addEventListener("click", function () {
+        putChannel("/api/v1/notify/channels/gotify", {
+          enabled: true,
+          server_url: document.getElementById("gotifyUrl").value.trim(),
+          app_token: document.getElementById("gotifyToken").value.trim(),
+          priority: 5
+        });
+      });
+      document.getElementById("saveBark").addEventListener("click", function () {
+        putChannel("/api/v1/notify/channels/bark", {
+          enabled: true,
+          server_url: document.getElementById("barkUrl").value.trim(),
+          device_key: document.getElementById("barkKey").value.trim(),
+          sound: "bell"
+        });
+      });
+      document.getElementById("testEmail").addEventListener("click", function () { testChannel("email"); });
+      document.getElementById("testGotify").addEventListener("click", function () { testChannel("gotify"); });
+      document.getElementById("testBark").addEventListener("click", function () { testChannel("bark"); });
+      document.getElementById("saveProfile").addEventListener("click", saveClockinProfile);
+      document.getElementById("createJob").addEventListener("click", createJob);
+      document.getElementById("jobsBody").addEventListener("click", function (e) {
+        const id = e.target && e.target.getAttribute("data-id");
+        if (id) {
+          runJob(id);
+        }
+      });
+      document.getElementById("logout").addEventListener("click", async function () {
+        await api("/api/v1/auth/logout", { method: "POST" });
+        location.href = "/login";
+      });
+      document.getElementById("toAdmin").addEventListener("click", function () { location.href = "/admin"; });
+
+      loadMe();
+      loadNotifyChannels();
+      loadClockinProfile();
+      loadJobs();
+    });
+  </script>
+</body>
+</html>

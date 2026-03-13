@@ -1,12 +1,8 @@
 package server
 
 import (
-	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -34,6 +30,9 @@ func (a *App) router() http.Handler {
 	mux.HandleFunc("/api/v1/auth/login", a.handleLogin)
 	mux.HandleFunc("/api/v1/auth/logout", a.handleLogout)
 	mux.HandleFunc("/api/v1/auth/me", a.handleMe)
+	mux.HandleFunc("/api/v1/clockin/profile", a.handleClockinProfile)
+	mux.HandleFunc("/api/v1/clockin/jobs", a.handleClockinJobs)
+	mux.HandleFunc("/api/v1/clockin/jobs/", a.handleClockinJobActions)
 	mux.HandleFunc("/api/v1/notify/channels", a.handleGetNotifyChannels)
 	mux.HandleFunc("/api/v1/notify/channels/email", a.handlePutNotifyEmail)
 	mux.HandleFunc("/api/v1/notify/channels/gotify", a.handlePutNotifyGotify)
@@ -42,6 +41,7 @@ func (a *App) router() http.Handler {
 	mux.HandleFunc("/api/v1/admin/auth/login", a.handleAdminLogin)
 	mux.HandleFunc("/api/v1/wps/sessions", a.handleWPSLoginSessionRoutes)
 	mux.HandleFunc("/api/v1/wps/sessions/", a.handleWPSLoginSessionRoutes)
+	mux.HandleFunc("/", a.handlePageRoutes)
 
 	return loggingMiddleware(mux)
 }
@@ -57,28 +57,6 @@ func (a *App) handleBootstrapStatus(w http.ResponseWriter, _ *http.Request) {
 		DBReady:                 a.state.DBReady,
 		SMTPEnabled:             a.cfg.SMTP.Enabled,
 	})
-}
-
-func (a *App) handleQRCodeProxyPlaceholder(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
-		return
-	}
-	if !strings.HasSuffix(r.URL.Path, "/qr") {
-		writeJSON(w, http.StatusNotFound, "not found", nil)
-		return
-	}
-
-	ts := r.URL.Query().Get("ts")
-	w.Header().Set("Cache-Control", "no-store, max-age=0")
-	w.Header().Set("Pragma", "no-cache")
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("X-QR-Proxy-Ts", strconv.FormatInt(time.Now().UnixMilli(), 10))
-	if ts != "" {
-		w.Header().Set("X-QR-Client-Ts", ts)
-	}
-	w.Header().Set("X-QR-Placeholder", "true")
-	_, _ = w.Write(placeholderPNG())
 }
 
 func (a *App) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
@@ -121,13 +99,4 @@ func writeJSON(w http.ResponseWriter, statusCode int, message string, data any) 
 		TS:        time.Now().UnixMilli(),
 		Data:      data,
 	})
-}
-
-func placeholderPNG() []byte {
-	const tinyTransparentPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/w8AAn8B9W6Hg0QAAAAASUVORK5CYII="
-	decoded, err := base64.StdEncoding.DecodeString(tinyTransparentPNG)
-	if err != nil {
-		return []byte{}
-	}
-	return bytes.Clone(decoded)
 }

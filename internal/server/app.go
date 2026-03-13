@@ -90,6 +90,9 @@ func NewApp() (*App, error) {
 
 func (a *App) Run(ctx context.Context) error {
 	serverErrCh := make(chan error, 1)
+	schedulerStopCh := make(chan struct{})
+	go a.startScheduler(schedulerStopCh)
+	log.Printf("调度器已启动, enabled_jobs=%d", a.countEnabledJobs())
 
 	go func() {
 		log.Printf("Apparition server 正在监听 %s", a.http.Addr)
@@ -98,6 +101,7 @@ func (a *App) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
+		close(schedulerStopCh)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = a.http.Shutdown(shutdownCtx)
@@ -107,6 +111,7 @@ func (a *App) Run(ctx context.Context) error {
 		}
 		return nil
 	case err := <-serverErrCh:
+		close(schedulerStopCh)
 		_ = a.db.Close()
 		if a.closeLog != nil {
 			a.closeLog()

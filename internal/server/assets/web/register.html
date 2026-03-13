@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apparition - 注册</title>
+  <link rel="stylesheet" href="https://cdn.staticfile.org/layui/2.9.17/css/layui.css" />
+  <style>
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(140deg, #f6fff5, #e8f6ef 45%, #d9efe9 100%);
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      width: 420px;
+      background: rgba(255, 255, 255, 0.97);
+      border-radius: 16px;
+      box-shadow: 0 16px 40px rgba(45, 97, 86, 0.2);
+      padding: 24px;
+    }
+    .title {
+      margin: 0 0 18px;
+      font-size: 24px;
+      font-weight: 700;
+      color: #1f5e51;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1 class="title">邮箱注册</h1>
+    <div class="layui-form" lay-filter="registerForm">
+      <div class="layui-form-item">
+        <input class="layui-input" type="email" name="email" placeholder="邮箱" required />
+      </div>
+      <div class="layui-form-item layui-row layui-col-space10">
+        <div class="layui-col-xs8">
+          <input class="layui-input" type="text" name="emailCode" placeholder="邮箱验证码" required />
+        </div>
+        <div class="layui-col-xs4">
+          <button type="button" id="sendCode" class="layui-btn layui-btn-primary layui-btn-fluid">发送验证码</button>
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <input class="layui-input" type="text" name="nickname" placeholder="昵称（可选）" />
+      </div>
+      <div class="layui-form-item">
+        <input class="layui-input" type="password" name="password" placeholder="密码（至少8位）" required />
+      </div>
+      <button class="layui-btn layui-btn-normal layui-btn-fluid" lay-submit lay-filter="submitRegister">注册</button>
+      <div style="margin-top: 12px; text-align: right;">已有账号？<a href="/login">去登录</a></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.staticfile.org/layui/2.9.17/layui.js"></script>
+  <script>
+    layui.use(["form", "layer"], function () {
+      const form = layui.form;
+      const layer = layui.layer;
+      const sendButton = document.getElementById("sendCode");
+
+      sendButton.addEventListener("click", async function () {
+        const emailInput = document.querySelector("input[name='email']");
+        const email = emailInput.value.trim();
+        if (!email) {
+          layer.msg("请先输入邮箱");
+          return;
+        }
+        const res = await fetch("/api/v1/auth/email/send", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ email: email })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          layer.msg(data.message || "发送失败");
+          return;
+        }
+        layer.msg("验证码已发送");
+      });
+
+      form.on("submit(submitRegister)", async function (obj) {
+        const res = await fetch("/api/v1/auth/register", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(obj.field)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          layer.msg(data.message || "注册失败");
+          return false;
+        }
+        layer.msg("注册成功，请登录");
+        setTimeout(function () { location.href = "/login"; }, 500);
+        return false;
+      });
+    });
+  </script>
+</body>
+</html>
