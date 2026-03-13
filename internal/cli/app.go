@@ -84,7 +84,7 @@ func Parse(args []string) (Options, error) {
 			options.Command = args[0]
 			args = args[1:]
 		case "help":
-			return Options{}, fmt.Errorf(usage())
+			return Options{}, fmt.Errorf("%s", usage())
 		}
 	}
 
