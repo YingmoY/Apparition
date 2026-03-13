@@ -66,6 +66,74 @@ func (a *App) handleClockinJobs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *App) handleClockinRuns(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+		return
+	}
+
+	user, _, err := a.currentUserFromRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, "未登录", nil)
+		return
+	}
+
+	page, pageSize, offset := parsePagination(r)
+	var total int
+	if err := a.db.QueryRow(`SELECT COUNT(1) FROM clockin_runs WHERE user_id = ?`, user.ID).Scan(&total); err != nil {
+		writeJSON(w, http.StatusInternalServerError, "读取历史统计失败", nil)
+		return
+	}
+
+	rows, err := a.db.Query(`
+		SELECT id, job_id, trigger_type, status, message, started_at, finished_at, run_date
+		FROM clockin_runs
+		WHERE user_id = ?
+		ORDER BY started_at DESC
+		LIMIT ? OFFSET ?
+	`, user.ID, pageSize, offset)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, "读取历史记录失败", nil)
+		return
+	}
+	defer rows.Close()
+
+	items := make([]map[string]any, 0)
+	for rows.Next() {
+		var (
+			id          int64
+			jobID       sql.NullInt64
+			triggerType string
+			status      string
+			message     string
+			startedAt   time.Time
+			finishedAt  time.Time
+			runDate     string
+		)
+		if err := rows.Scan(&id, &jobID, &triggerType, &status, &message, &startedAt, &finishedAt, &runDate); err != nil {
+			writeJSON(w, http.StatusInternalServerError, "读取历史记录失败", nil)
+			return
+		}
+		items = append(items, map[string]any{
+			"id":           id,
+			"job_id":       nullableInt64(jobID),
+			"trigger_type": triggerType,
+			"status":       status,
+			"message":      message,
+			"started_at":   startedAt,
+			"finished_at":  finishedAt,
+			"run_date":     runDate,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, "ok", map[string]any{
+		"items":     items,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
 func (a *App) handleClockinJobActions(w http.ResponseWriter, r *http.Request) {
 	user, _, err := a.currentUserFromRequest(r)
 	if err != nil {

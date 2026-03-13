@@ -13,11 +13,23 @@
 <body>
   <div class="panel">
     <h2>管理员后台</h2>
-    <p>当前为第一版管理页，后续将补充用户与任务管理表格。</p>
+  <p>管理员可查看用户与打卡执行记录。</p>
     <button id="back" class="layui-btn layui-btn-primary">返回控制台</button>
     <button id="logout" class="layui-btn layui-btn-danger">退出登录</button>
     <hr />
     <div id="status">正在校验权限...</div>
+
+  <h3>用户列表</h3>
+  <table class="layui-table">
+    <thead><tr><th>ID</th><th>邮箱</th><th>角色</th><th>状态</th><th>最近登录</th></tr></thead>
+    <tbody id="usersBody"></tbody>
+  </table>
+
+  <h3>打卡执行记录</h3>
+  <table class="layui-table">
+    <thead><tr><th>ID</th><th>用户</th><th>状态</th><th>触发</th><th>开始时间</th><th>消息</th></tr></thead>
+    <tbody id="runsBody"></tbody>
+  </table>
   </div>
   <script src="https://cdn.staticfile.org/layui/2.9.17/layui.js"></script>
   <script>
@@ -34,7 +46,48 @@
           return;
         }
         document.getElementById("status").textContent = "管理员身份已确认: " + result.data.data.email;
+    loadUsers();
+    loadRuns();
       });
+
+    async function loadUsers() {
+    const res = await fetch("/api/v1/admin/users?page=1&pageSize=20");
+    const data = await res.json();
+    if (!res.ok) {
+      return;
+    }
+    const body = document.getElementById("usersBody");
+    body.innerHTML = "";
+    (data.data.items || []).forEach(function(user){
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + user.id + "</td>" +
+                     "<td>" + user.email + "</td>" +
+                     "<td>" + user.role + "</td>" +
+                     "<td>" + user.status + "</td>" +
+                     "<td>" + (user.last_login_at || "-") + "</td>";
+      body.appendChild(tr);
+    });
+    }
+
+    async function loadRuns() {
+    const res = await fetch("/api/v1/admin/runs?page=1&pageSize=30");
+    const data = await res.json();
+    if (!res.ok) {
+      return;
+    }
+    const body = document.getElementById("runsBody");
+    body.innerHTML = "";
+    (data.data.items || []).forEach(function(run){
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + run.id + "</td>" +
+                     "<td>" + run.email + "</td>" +
+                     "<td>" + run.status + "</td>" +
+                     "<td>" + run.trigger_type + "</td>" +
+                     "<td>" + run.started_at + "</td>" +
+                     "<td>" + run.message + "</td>";
+      body.appendChild(tr);
+    });
+    }
       document.getElementById("back").addEventListener("click", function(){ location.href = "/dashboard"; });
       document.getElementById("logout").addEventListener("click", async function(){
         await fetch("/api/v1/auth/logout", {method:"POST"});

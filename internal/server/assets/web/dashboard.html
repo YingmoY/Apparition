@@ -92,6 +92,14 @@
         <tbody id="jobsBody"></tbody>
       </table>
     </div>
+
+    <div class="card">
+      <h3>执行历史</h3>
+      <table class="layui-table" style="margin-top:10px;">
+        <thead><tr><th>ID</th><th>状态</th><th>触发方式</th><th>开始时间</th><th>结束时间</th><th>消息</th></tr></thead>
+        <tbody id="runsBody"></tbody>
+      </table>
+    </div>
   </div>
 
   <script src="https://cdn.staticfile.org/layui/2.9.17/layui.js"></script>
@@ -221,7 +229,27 @@
         }
         layer.msg("执行结果: " + data.data.status + " - " + data.data.message);
         loadJobs();
+    loadRuns();
       }
+
+    async function loadRuns() {
+    const { res, data } = await api("/api/v1/clockin/runs?page=1&pageSize=20");
+    if (!res.ok) {
+      return;
+    }
+    const body = document.getElementById("runsBody");
+    body.innerHTML = "";
+    (data.data.items || []).forEach(function(run) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + run.id + "</td>" +
+                     "<td>" + run.status + "</td>" +
+                     "<td>" + run.trigger_type + "</td>" +
+                     "<td>" + run.started_at + "</td>" +
+                     "<td>" + run.finished_at + "</td>" +
+                     "<td>" + run.message + "</td>";
+      body.appendChild(tr);
+    });
+    }
 
       async function putChannel(url, payload) {
         const { res, data } = await api(url, {
@@ -324,6 +352,7 @@
       loadNotifyChannels();
       loadClockinProfile();
       loadJobs();
+	  loadRuns();
     });
   </script>
 </body>
