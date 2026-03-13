@@ -1,0 +1,130 @@
+package server
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+)
+
+type apiResponse struct {
+	Code      int    `json:"code"`
+	Message   string `json:"message"`
+	RequestID string `json:"requestId"`
+	TS        int64  `json:"ts"`
+	Data      any    `json:"data,omitempty"`
+}
+
+type bootstrapStatus struct {
+	IsFirstRun              bool `json:"is_first_run"`
+	AdminMustChangePassword bool `json:"admin_must_change_password"`
+	DBReady                 bool `json:"db_ready"`
+	SMTPEnabled             bool `json:"smtp_enabled"`
+}
+
+func (a *App) router() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", a.handleHealthz)
+	mux.HandleFunc("/api/v1/system/bootstrap/status", a.handleBootstrapStatus)
+	mux.HandleFunc("/api/v1/admin/auth/login", a.handleAdminLogin)
+	mux.HandleFunc("/api/v1/wps/sessions/", a.handleQRCodeProxyPlaceholder)
+
+	return loggingMiddleware(mux)
+}
+
+func (a *App) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, "ok", map[string]any{"status": "ok"})
+}
+
+func (a *App) handleBootstrapStatus(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, "ok", bootstrapStatus{
+		IsFirstRun:              a.state.FirstRun,
+		AdminMustChangePassword: a.state.AdminMustChangePassword,
+		DBReady:                 a.state.DBReady,
+		SMTPEnabled:             a.cfg.SMTP.Enabled,
+	})
+}
+
+func (a *App) handleQRCodeProxyPlaceholder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+		return
+	}
+	if !strings.HasSuffix(r.URL.Path, "/qr") {
+		writeJSON(w, http.StatusNotFound, "not found", nil)
+		return
+	}
+
+	ts := r.URL.Query().Get("ts")
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("X-QR-Proxy-Ts", strconv.FormatInt(time.Now().UnixMilli(), 10))
+	if ts != "" {
+		w.Header().Set("X-QR-Client-Ts", ts)
+	}
+	w.Header().Set("X-QR-Placeholder", "true")
+	_, _ = w.Write(placeholderPNG())
+}
+
+func (a *App) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+		return
+	}
+
+	var payload struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, "invalid request body", nil)
+		return
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, "invalid json payload", nil)
+		return
+	}
+
+	if payload.Username != a.cfg.Admin.Username || !verifyAdminPassword(payload.Password, a.cfg.Admin.PasswordHash) {
+		writeJSON(w, http.StatusUnauthorized, "用户名或密码错误", nil)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, "ok", map[string]any{
+		"must_change_password": a.cfg.Admin.MustChangePassword,
+	})
+}
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+	})
+}
+
+func writeJSON(w http.ResponseWriter, statusCode int, message string, data any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(apiResponse{
+		Code:      statusCode,
+		Message:   message,
+		RequestID: "",
+		TS:        time.Now().UnixMilli(),
+		Data:      data,
+	})
+}
+
+func placeholderPNG() []byte {
+	const tinyTransparentPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/w8AAn8B9W6Hg0QAAAAASUVORK5CYII="
+	decoded, err := base64.StdEncoding.DecodeString(tinyTransparentPNG)
+	if err != nil {
+		return []byte{}
+	}
+	return bytes.Clone(decoded)
+}

@@ -1,0 +1,13 @@
+<html>
+  <body>
+    <h2>{{.AppName}} 注册验证码</h2>
+    <p>你好，你正在注册 <strong>{{.AppName}}</strong>。</p>
+    <p>你的验证码是：<strong style="font-size: 20px;">{{.Code}}</strong></p>
+    <p>验证码将在 {{.ExpireMinutes}} 分钟后失效，且仅可使用一次。</p>
+    <hr />
+    <p>请求时间：{{.RequestTime}}</p>
+    <p>请求 IP：{{.RequestIP}}</p>
+    <p>如果这不是你的操作，请忽略本邮件。</p>
+    <p>如需帮助，请联系：{{.SupportEmail}}</p>
+  </body>
+</html>

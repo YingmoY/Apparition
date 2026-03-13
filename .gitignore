@@ -15,11 +15,17 @@ logs/
 cookie.json
 config.json
 config.local.json
+*.bak
+data/
 
 # Go tooling
 .coverprofile
 coverage.out
+go.sum
 
 # Editor files
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,15 @@
+<html>
+  <body>
+    <h2>{{.AppName}} 打卡失败告警</h2>
+    <p>你的打卡任务执行失败，请尽快处理。</p>
+    <ul>
+      <li>执行时间：{{.RunTime}}</li>
+      <li>目标表单：{{.TargetFormName}}</li>
+      <li>定位地址：{{.Location}}</li>
+      <li>状态：{{.RunStatus}}</li>
+      <li>失败原因：{{.ErrorMessage}}</li>
+    </ul>
+    <p><strong>建议操作：</strong>{{.ActionAdvice}}</p>
+    <p>如需帮助，请联系：{{.SupportEmail}}</p>
+  </body>
+</html>
