@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,8 +29,19 @@ func (a *App) router() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", a.handleHealthz)
 	mux.HandleFunc("/api/v1/system/bootstrap/status", a.handleBootstrapStatus)
+	mux.HandleFunc("/api/v1/auth/email/send", a.handleSendRegisterCode)
+	mux.HandleFunc("/api/v1/auth/register", a.handleRegister)
+	mux.HandleFunc("/api/v1/auth/login", a.handleLogin)
+	mux.HandleFunc("/api/v1/auth/logout", a.handleLogout)
+	mux.HandleFunc("/api/v1/auth/me", a.handleMe)
+	mux.HandleFunc("/api/v1/notify/channels", a.handleGetNotifyChannels)
+	mux.HandleFunc("/api/v1/notify/channels/email", a.handlePutNotifyEmail)
+	mux.HandleFunc("/api/v1/notify/channels/gotify", a.handlePutNotifyGotify)
+	mux.HandleFunc("/api/v1/notify/channels/bark", a.handlePutNotifyBark)
+	mux.HandleFunc("/api/v1/notify/test", a.handleNotifyTest)
 	mux.HandleFunc("/api/v1/admin/auth/login", a.handleAdminLogin)
-	mux.HandleFunc("/api/v1/wps/sessions/", a.handleQRCodeProxyPlaceholder)
+	mux.HandleFunc("/api/v1/wps/sessions", a.handleWPSLoginSessionRoutes)
+	mux.HandleFunc("/api/v1/wps/sessions/", a.handleWPSLoginSessionRoutes)
 
 	return loggingMiddleware(mux)
 }
@@ -81,14 +91,7 @@ func (a *App) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, "invalid request body", nil)
-		return
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, "invalid json payload", nil)
+	if !decodeJSONBody(w, r, &payload) {
 		return
 	}
 

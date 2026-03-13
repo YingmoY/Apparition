@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -16,6 +17,8 @@ type App struct {
 	db       *sql.DB
 	http     *http.Server
 	closeLog func()
+	wpsMu    sync.RWMutex
+	wpsRuns  map[string]*wpsRuntimeSession
 }
 
 func NewApp() (*App, error) {
@@ -71,6 +74,7 @@ func NewApp() (*App, error) {
 		},
 		db:       db,
 		closeLog: closeLog,
+		wpsRuns:  make(map[string]*wpsRuntimeSession),
 	}
 
 	app.http = &http.Server{
