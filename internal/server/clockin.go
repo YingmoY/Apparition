@@ -80,7 +80,7 @@ func (a *App) getClockinProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	var (
 		targetURL, inputName, address, ua, locale, acceptLang, verifyCookies, tz string
-		lon, lat                                                                  float64
+		lon, lat                                                                 float64
 	)
 	err = a.db.QueryRow(`SELECT target_url, input_name, longitude, latitude, formatted_address,
 		user_agent, locale, accept_language, verify_cookies, timezone
@@ -201,12 +201,12 @@ func (a *App) getClockinJobs(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var (
-			id                                               int64
-			enabled                                          int
-			stype, svalue, retryPolicy                       string
-			nextRunAt                                        time.Time
-			lastRunAt                                        sql.NullTime
-			createdAt                                        time.Time
+			id                         int64
+			enabled                    int
+			stype, svalue, retryPolicy string
+			nextRunAt                  time.Time
+			lastRunAt                  sql.NullTime
+			createdAt                  time.Time
 		)
 		if err := rows.Scan(&id, &enabled, &stype, &svalue, &nextRunAt, &lastRunAt, &retryPolicy, &createdAt); err != nil {
 			continue
@@ -285,9 +285,9 @@ func (a *App) updateClockinJob(w http.ResponseWriter, r *http.Request, jobID int
 	}
 
 	var payload struct {
-		Enabled       *bool   `json:"enabled"`
-		ScheduleType  string  `json:"schedule_type"`
-		ScheduleValue string  `json:"schedule_value"`
+		Enabled       *bool  `json:"enabled"`
+		ScheduleType  string `json:"schedule_type"`
+		ScheduleValue string `json:"schedule_value"`
 	}
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -367,10 +367,10 @@ func (a *App) handleClockinRuns(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var (
-			id                                          int64
-			jobID                                       sql.NullInt64
-			triggerType, status, message, runDate       string
-			startedAt, finishedAt                       time.Time
+			id                                    int64
+			jobID                                 sql.NullInt64
+			triggerType, status, message, runDate string
+			startedAt, finishedAt                 time.Time
 		)
 		if err := rows.Scan(&id, &jobID, &triggerType, &status, &message, &startedAt, &finishedAt, &runDate); err != nil {
 			continue

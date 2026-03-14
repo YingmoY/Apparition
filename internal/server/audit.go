@@ -49,9 +49,9 @@ func (a *App) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var (
-			id                                                        int64
+			id                                                       int64
 			actorType, action, targetType, targetID, summary, detail string
-			createdAt                                                 time.Time
+			createdAt                                                time.Time
 		)
 		if err := rows.Scan(&id, &actorType, &action, &targetType, &targetID, &summary, &detail, &createdAt); err != nil {
 			continue

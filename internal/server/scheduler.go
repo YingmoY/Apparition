@@ -31,7 +31,7 @@ func (a *App) dispatchDueJobs() {
 	defer rows.Close()
 
 	type dueJob struct {
-		ID, UserID                int64
+		ID, UserID                  int64
 		ScheduleType, ScheduleValue string
 	}
 	var jobs []dueJob

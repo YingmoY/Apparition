@@ -10,7 +10,7 @@ import (
 
 const (
 	defaultAdminUsername    = "admin"
-	defaultAdminPassword   = "admin"
+	defaultAdminPassword    = "admin"
 	defaultServerListenHost = "0.0.0.0"
 	defaultServerListenPort = 5680
 )

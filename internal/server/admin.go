@@ -65,10 +65,10 @@ func (a *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var (
-			id                                   int64
-			email, nickname, role, status         string
-			lastLoginAt                          sql.NullTime
-			createdAt                            time.Time
+			id                            int64
+			email, nickname, role, status string
+			lastLoginAt                   sql.NullTime
+			createdAt                     time.Time
 		)
 		if err := rows.Scan(&id, &email, &nickname, &role, &status, &lastLoginAt, &createdAt); err != nil {
 			continue
@@ -114,9 +114,9 @@ func (a *App) handleAdminRuns(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var (
-			id                                      int64
-			email, triggerType, status, message      string
-			startedAt, finishedAt                    time.Time
+			id                                  int64
+			email, triggerType, status, message string
+			startedAt, finishedAt               time.Time
 		)
 		if err := rows.Scan(&id, &email, &triggerType, &status, &message, &startedAt, &finishedAt); err != nil {
 			continue
