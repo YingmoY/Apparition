@@ -30,11 +30,16 @@ func (a *App) router() http.Handler {
 	mux.HandleFunc("/api/v1/auth/login", a.handleLogin)
 	mux.HandleFunc("/api/v1/auth/logout", a.handleLogout)
 	mux.HandleFunc("/api/v1/auth/me", a.handleMe)
+	mux.HandleFunc("/api/v1/auth/change-password", a.handleChangePassword)
+	mux.HandleFunc("/api/v1/cookies", a.handleCookies)
+	mux.HandleFunc("/api/v1/audit/logs", a.handleAuditLogs)
 	mux.HandleFunc("/api/v1/clockin/profile", a.handleClockinProfile)
 	mux.HandleFunc("/api/v1/clockin/jobs", a.handleClockinJobs)
 	mux.HandleFunc("/api/v1/clockin/jobs/", a.handleClockinJobActions)
 	mux.HandleFunc("/api/v1/clockin/runs", a.handleClockinRuns)
 	mux.HandleFunc("/api/v1/notify/channels", a.handleGetNotifyChannels)
+	mux.HandleFunc("/api/v1/notify/events", a.handleNotificationEvents)
+	mux.HandleFunc("/api/v1/notify/deliveries", a.handleNotificationDeliveries)
 	mux.HandleFunc("/api/v1/notify/channels/email", a.handlePutNotifyEmail)
 	mux.HandleFunc("/api/v1/notify/channels/gotify", a.handlePutNotifyGotify)
 	mux.HandleFunc("/api/v1/notify/channels/bark", a.handlePutNotifyBark)
@@ -42,6 +47,7 @@ func (a *App) router() http.Handler {
 	mux.HandleFunc("/api/v1/admin/auth/login", a.handleAdminLogin)
 	mux.HandleFunc("/api/v1/admin/users", a.handleAdminUsers)
 	mux.HandleFunc("/api/v1/admin/runs", a.handleAdminRuns)
+	mux.HandleFunc("/api/v1/admin/logs", a.handleAdminLogs)
 	mux.HandleFunc("/api/v1/wps/sessions", a.handleWPSLoginSessionRoutes)
 	mux.HandleFunc("/api/v1/wps/sessions/", a.handleWPSLoginSessionRoutes)
 	mux.HandleFunc("/", a.handlePageRoutes)
@@ -75,14 +81,14 @@ func (a *App) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &payload) {
 		return
 	}
-
-	if payload.Username != a.cfg.Admin.Username || !verifyAdminPassword(payload.Password, a.cfg.Admin.PasswordHash) {
+	user, hash, err := a.loadUserByEmail(payload.Username)
+	if err != nil || user.Role != "admin" || !verifyAdminPassword(payload.Password, hash) {
 		writeJSON(w, http.StatusUnauthorized, "用户名或密码错误", nil)
 		return
 	}
 
 	writeJSON(w, http.StatusOK, "ok", map[string]any{
-		"must_change_password": a.cfg.Admin.MustChangePassword,
+		"must_change_password": user.MustChangePassword,
 	})
 }
 

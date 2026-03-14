@@ -89,6 +89,7 @@ func (a *App) handleSendRegisterCode(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, "发送验证码失败", nil)
 		return
 	}
+	a.writeAuditLog(nil, "system", "send_register_code", "email_verifications", email, "发送注册验证码", map[string]any{"email": email})
 
 	writeJSON(w, http.StatusOK, "ok", map[string]any{
 		"expire_at": expireAt,
@@ -162,6 +163,7 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	_ = verificationID
 	userID, _ := result.LastInsertId()
+	a.writeAuditLog(&userID, "user", "register", "users", fmt.Sprintf("%d", userID), "用户完成注册", map[string]any{"email": email})
 	writeJSON(w, http.StatusOK, "ok", map[string]any{
 		"id":       userID,
 		"email":    email,
@@ -223,6 +225,8 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, _ = a.db.Exec(`UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?`, now, now, user.ID)
+	a.writeAuditLog(&user.ID, "user", "login", "sessions", tokenHash, "用户登录成功", map[string]any{"ip": extractClientIP(r)})
+	a.emitAuthSecurityNotification(user.ID, user.Email, extractClientIP(r))
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -252,8 +256,12 @@ func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 	cookie, err := r.Cookie(sessionCookieName)
 	if err == nil && strings.TrimSpace(cookie.Value) != "" {
+		user, _, userErr := a.currentUserFromRequest(r)
 		tokenHash := hashSessionToken(cookie.Value)
 		_, _ = a.db.Exec(`UPDATE sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL`, time.Now().UTC(), tokenHash)
+		if userErr == nil {
+			a.writeAuditLog(&user.ID, "user", "logout", "sessions", tokenHash, "用户退出登录", nil)
+		}
 	}
 
 	http.SetCookie(w, &http.Cookie{

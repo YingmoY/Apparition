@@ -111,3 +111,14 @@ func loadServerConfig(configPath string) (ServerConfig, error) {
 
 	return cfg, nil
 }
+
+func saveServerConfig(configPath string, cfg ServerConfig) error {
+	content, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %w", err)
+	}
+	if err := os.WriteFile(filepath.Clean(configPath), content, 0600); err != nil {
+		return fmt.Errorf("写入配置失败: %w", err)
+	}
+	return nil
+}

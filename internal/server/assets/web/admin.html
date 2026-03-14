@@ -30,6 +30,12 @@
     <thead><tr><th>ID</th><th>用户</th><th>状态</th><th>触发</th><th>开始时间</th><th>消息</th></tr></thead>
     <tbody id="runsBody"></tbody>
   </table>
+
+  <h3>审计日志</h3>
+  <table class="layui-table">
+    <thead><tr><th>ID</th><th>用户</th><th>动作</th><th>目标</th><th>摘要</th><th>时间</th></tr></thead>
+    <tbody id="logsBody"></tbody>
+  </table>
   </div>
   <script src="https://cdn.staticfile.org/layui/2.9.17/layui.js"></script>
   <script>
@@ -48,6 +54,7 @@
         document.getElementById("status").textContent = "管理员身份已确认: " + result.data.data.email;
     loadUsers();
     loadRuns();
+    loadLogs();
       });
 
     async function loadUsers() {
@@ -74,6 +81,26 @@
     const data = await res.json();
     if (!res.ok) {
       return;
+    }
+
+    async function loadLogs() {
+    const res = await fetch("/api/v1/admin/logs?page=1&pageSize=30");
+    const data = await res.json();
+    if (!res.ok) {
+      return;
+    }
+    const body = document.getElementById("logsBody");
+    body.innerHTML = "";
+    (data.data.items || []).forEach(function(log){
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + log.id + "</td>" +
+                     "<td>" + (log.user_id || "-") + "</td>" +
+                     "<td>" + log.action + "</td>" +
+                     "<td>" + log.target_type + "</td>" +
+                     "<td>" + log.summary + "</td>" +
+                     "<td>" + log.created_at + "</td>";
+      body.appendChild(tr);
+    });
     }
     const body = document.getElementById("runsBody");
     body.innerHTML = "";

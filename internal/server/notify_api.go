@@ -90,6 +90,7 @@ func (a *App) handlePutNotifyChannel(w http.ResponseWriter, r *http.Request, cha
 		writeJSON(w, http.StatusInternalServerError, "保存通知配置失败", nil)
 		return
 	}
+	a.writeAuditLog(&user.ID, "user", "update_notify_channel", "notification_channels", channelType, "用户更新了通知渠道配置", map[string]any{"channel": channelType, "enabled": enabled})
 
 	writeJSON(w, http.StatusOK, "ok", map[string]any{"channel": channelType})
 }
@@ -144,6 +145,7 @@ func (a *App) handleNotifyTest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, "发送测试通知失败", map[string]any{"error": err.Error()})
 		return
 	}
+	a.writeAuditLog(&user.ID, "user", "test_notify_channel", "notification_channels", channel, "用户发送了测试通知", nil)
 
 	writeJSON(w, http.StatusOK, "ok", map[string]any{"channel": channel})
 }

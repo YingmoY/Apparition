@@ -103,6 +103,7 @@ func (a *App) handleCreateWPSLoginSession(w http.ResponseWriter, r *http.Request
 	}
 
 	go a.waitForWPSScan(sessionID, run)
+	a.writeAuditLog(&user.ID, "user", "create_wps_login_session", "wps_login_sessions", sessionID, "用户创建了 WPS 登录会话", nil)
 
 	writeJSON(w, http.StatusOK, "ok", map[string]any{
 		"session_id": sessionID,
@@ -249,6 +250,8 @@ func (a *App) waitForWPSScan(sessionID string, run *wpsRuntimeSession) {
 		a.updateWPSRunStatus(sessionID, run, "failed", "save cookies failed")
 		return
 	}
+	uid := run.UserID
+	a.writeAuditLog(&uid, "user", "save_wps_cookies", "user_cookies", "self", "WPS 登录成功并更新了 Cookie", nil)
 
 	a.updateWPSRunStatus(sessionID, run, "confirmed", "login success")
 }

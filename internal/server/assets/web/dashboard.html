@@ -20,9 +20,12 @@
       <div>
         <h2 style="margin:0;">用户控制台</h2>
         <div id="userInfo" class="label">加载中...</div>
+		<div id="cookieInfo" class="label">Cookie 状态：加载中...</div>
       </div>
       <div>
         <button id="toAdmin" class="layui-btn layui-btn-primary">管理员后台</button>
+		<button id="changePassword" class="layui-btn layui-btn-normal">修改密码</button>
+		<button id="clearCookies" class="layui-btn layui-btn-warm">删除 Cookie</button>
         <button id="logout" class="layui-btn layui-btn-danger">退出登录</button>
       </div>
     </div>
@@ -100,6 +103,22 @@
         <tbody id="runsBody"></tbody>
       </table>
     </div>
+
+  <div class="card">
+    <h3>通知历史</h3>
+    <table class="layui-table">
+      <thead><tr><th>类型</th><th>标题</th><th>级别</th><th>时间</th></tr></thead>
+      <tbody id="notifyEventsBody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>审计日志</h3>
+    <table class="layui-table">
+      <thead><tr><th>动作</th><th>目标</th><th>摘要</th><th>时间</th></tr></thead>
+      <tbody id="auditBody"></tbody>
+    </table>
+  </div>
   </div>
 
   <script src="https://cdn.staticfile.org/layui/2.9.17/layui.js"></script>
@@ -125,7 +144,19 @@
           return;
         }
         document.getElementById("userInfo").textContent = "用户: " + data.data.email + " | 角色: " + data.data.role;
+    if (data.data.must_change_password) {
+      layer.alert("当前账号必须修改密码后继续使用", {icon: 0});
+    }
       }
+
+    async function loadCookieStatus() {
+    const { res, data } = await api("/api/v1/cookies");
+    if (!res.ok) {
+      return;
+    }
+    const info = data.data;
+    document.getElementById("cookieInfo").textContent = "Cookie 状态: " + (info.exists ? (info.valid ? "有效" : "无效") : "未配置") + " | 数量: " + info.cookie_count;
+    }
 
       async function loadNotifyChannels() {
         const { res, data } = await api("/api/v1/notify/channels");
@@ -237,6 +268,61 @@
     if (!res.ok) {
       return;
     }
+
+    async function loadNotifyEvents() {
+    const { res, data } = await api("/api/v1/notify/events?page=1&pageSize=10");
+    if (!res.ok) {
+      return;
+    }
+    const body = document.getElementById("notifyEventsBody");
+    body.innerHTML = "";
+    (data.data.items || []).forEach(function(event) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + event.event_type + "</td><td>" + event.title + "</td><td>" + event.level + "</td><td>" + event.created_at + "</td>";
+      body.appendChild(tr);
+    });
+    }
+
+    async function loadAuditLogs() {
+    const { res, data } = await api("/api/v1/audit/logs?page=1&pageSize=10");
+    if (!res.ok) {
+      return;
+    }
+    const body = document.getElementById("auditBody");
+    body.innerHTML = "";
+    (data.data.items || []).forEach(function(item) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + item.action + "</td><td>" + item.target_type + "</td><td>" + item.summary + "</td><td>" + item.created_at + "</td>";
+      body.appendChild(tr);
+    });
+    }
+
+    async function clearCookies() {
+    const { res, data } = await api("/api/v1/cookies", { method: "DELETE" });
+    if (!res.ok) {
+      layer.msg((data && data.message) || "删除失败");
+      return;
+    }
+    layer.msg("Cookie 已删除");
+    loadCookieStatus();
+    }
+
+    async function doChangePassword() {
+    const currentPassword = prompt("请输入当前密码");
+    if (!currentPassword) return;
+    const newPassword = prompt("请输入新密码（至少8位）");
+    if (!newPassword) return;
+    const { res, data } = await api("/api/v1/auth/change-password", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ currentPassword: currentPassword, newPassword: newPassword })
+    });
+    if (!res.ok) {
+      layer.msg((data && data.message) || "修改失败");
+      return;
+    }
+    layer.msg("密码修改成功");
+    }
     const body = document.getElementById("runsBody");
     body.innerHTML = "";
     (data.data.items || []).forEach(function(run) {
@@ -336,6 +422,8 @@
       document.getElementById("testBark").addEventListener("click", function () { testChannel("bark"); });
       document.getElementById("saveProfile").addEventListener("click", saveClockinProfile);
       document.getElementById("createJob").addEventListener("click", createJob);
+	  document.getElementById("changePassword").addEventListener("click", doChangePassword);
+	  document.getElementById("clearCookies").addEventListener("click", clearCookies);
       document.getElementById("jobsBody").addEventListener("click", function (e) {
         const id = e.target && e.target.getAttribute("data-id");
         if (id) {
@@ -349,10 +437,13 @@
       document.getElementById("toAdmin").addEventListener("click", function () { location.href = "/admin"; });
 
       loadMe();
+	  loadCookieStatus();
       loadNotifyChannels();
       loadClockinProfile();
       loadJobs();
 	  loadRuns();
+	  loadNotifyEvents();
+	  loadAuditLogs();
     });
   </script>
 </body>

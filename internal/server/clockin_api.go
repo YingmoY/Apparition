@@ -232,6 +232,8 @@ func (a *App) putClockinProfile(w http.ResponseWriter, r *http.Request, userID i
 		writeJSON(w, http.StatusInternalServerError, "保存打卡配置失败", nil)
 		return
 	}
+	id := userID
+	a.writeAuditLog(&id, "user", "update_clockin_profile", "clockin_profiles", "self", "用户更新了打卡配置", map[string]any{"target_url": payload.TargetURL})
 
 	writeJSON(w, http.StatusOK, "ok", nil)
 }
@@ -309,6 +311,8 @@ func (a *App) createClockinJob(w http.ResponseWriter, r *http.Request, userID in
 	}
 
 	id, _ := result.LastInsertId()
+	uid := userID
+	a.writeAuditLog(&uid, "user", "create_clockin_job", "clockin_jobs", fmt.Sprintf("%d", id), "用户创建了打卡任务", map[string]any{"schedule_type": payload.ScheduleType, "schedule_value": payload.ScheduleValue})
 	writeJSON(w, http.StatusOK, "ok", map[string]any{"id": id, "next_run_at": nextRunAt.UTC()})
 }
 
@@ -341,6 +345,8 @@ func (a *App) updateClockinJob(w http.ResponseWriter, r *http.Request, userID, j
 		writeJSON(w, http.StatusNotFound, "任务不存在", nil)
 		return
 	}
+	uid := userID
+	a.writeAuditLog(&uid, "user", "update_clockin_job", "clockin_jobs", fmt.Sprintf("%d", jobID), "用户更新了打卡任务", map[string]any{"schedule_type": payload.ScheduleType, "schedule_value": payload.ScheduleValue})
 	writeJSON(w, http.StatusOK, "ok", map[string]any{"id": jobID, "next_run_at": nextRunAt.UTC()})
 }
 
@@ -357,6 +363,8 @@ func (a *App) runClockinJobManually(w http.ResponseWriter, userID, jobID int64) 
 	}
 
 	runID, status, message := a.executeClockinRun(userID, &jobID, "manual")
+	uid := userID
+	a.writeAuditLog(&uid, "user", "run_clockin_job", "clockin_jobs", fmt.Sprintf("%d", jobID), "用户手动执行了打卡任务", map[string]any{"run_id": runID, "status": status})
 	writeJSON(w, http.StatusOK, "ok", map[string]any{"run_id": runID, "status": status, "message": message})
 }
 
@@ -399,6 +407,9 @@ func (a *App) insertClockinRun(userID int64, jobID *int64, triggerType, status, 
 		return 0, "failed", "写入执行记录失败"
 	}
 	runID, _ := result.LastInsertId()
+	uid := userID
+	a.writeAuditLog(&uid, "system", "clockin_run", "clockin_runs", fmt.Sprintf("%d", runID), "产生了一条打卡执行记录", map[string]any{"status": status, "trigger_type": triggerType})
+	a.emitClockinNotification(userID, runID, status, message)
 	return runID, status, message
 }
 
