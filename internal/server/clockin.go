@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -186,8 +187,13 @@ func (a *App) getClockinSchedule(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, "查询定时任务失败", nil)
 		return
 	}
+
+	// Parse hour/minute from cron expression "0 MM HH * * *"
+	hour, minute := parseCronTime(cronExpr)
+
 	result := map[string]any{
 		"id": id, "enabled": enabled == 1, "cron_expr": cronExpr,
+		"hour": hour, "minute": minute,
 		"created_at": createdAt.Format(time.RFC3339),
 	}
 	if lastRunAt.Valid {
@@ -205,18 +211,29 @@ func (a *App) putClockinSchedule(w http.ResponseWriter, r *http.Request) {
 
 	var payload struct {
 		Enabled  bool   `json:"enabled"`
+		Hour     int    `json:"hour"`
+		Minute   int    `json:"minute"`
 		CronExpr string `json:"cron_expr"`
 	}
 	if !decodeJSONBody(w, r, &payload) {
 		return
 	}
 
-	cronExpr := strings.TrimSpace(payload.CronExpr)
-	if cronExpr != "" {
-		if err := a.validateCronExpr(cronExpr); err != nil {
-			writeJSON(w, http.StatusBadRequest, "cron 表达式无效: "+err.Error(), nil)
+	// Build cron expression from hour/minute; fallback to raw cron_expr for backward compat
+	var cronExpr string
+	if payload.CronExpr != "" {
+		cronExpr = strings.TrimSpace(payload.CronExpr)
+	} else {
+		if payload.Hour < 0 || payload.Hour > 23 || payload.Minute < 0 || payload.Minute > 59 {
+			writeJSON(w, http.StatusBadRequest, "时间设置无效（时: 0-23, 分: 0-59）", nil)
 			return
 		}
+		cronExpr = fmt.Sprintf("0 %d %d * * *", payload.Minute, payload.Hour)
+	}
+
+	if err := a.validateCronExpr(cronExpr); err != nil {
+		writeJSON(w, http.StatusBadRequest, "定时表达式无效: "+err.Error(), nil)
+		return
 	}
 
 	now := time.Now().UTC()
@@ -234,6 +251,17 @@ func (a *App) putClockinSchedule(w http.ResponseWriter, r *http.Request) {
 
 	a.writeAuditLog(&user.ID, "user", "update_clockin_schedule", "clockin_jobs", formatUserID(user.ID), "更新打卡定时任务", nil)
 	writeJSON(w, http.StatusOK, "ok", nil)
+}
+
+// parseCronTime extracts hour and minute from a 6-field cron expression "0 MM HH * * *".
+func parseCronTime(cronExpr string) (int, int) {
+	parts := strings.Fields(cronExpr)
+	if len(parts) >= 3 {
+		minute, _ := strconv.Atoi(parts[1])
+		hour, _ := strconv.Atoi(parts[2])
+		return hour, minute
+	}
+	return 0, 0
 }
 
 func (a *App) handleClockinManualRun(w http.ResponseWriter, r *http.Request) {
@@ -331,10 +359,12 @@ func (a *App) executeClockinRun(userID int64, triggerType string) (int64, string
 	_, _ = a.db.Exec(`UPDATE clockin_jobs SET last_run_at = ?, updated_at = ? WHERE user_id = ?`, time.Now().UTC(), time.Now().UTC(), userID)
 
 	title := "打卡成功"
+	evtType := notifyEventClockinSuccess
 	if status == "failed" {
 		title = "打卡失败"
+		evtType = notifyEventClockinFailed
 	}
-	go a.sendUserNotifications(userID, title, result.Message)
+	go a.sendUserNotifications(userID, evtType, title, result.Message)
 
 	return runID, finalStatus, finalMsg
 }

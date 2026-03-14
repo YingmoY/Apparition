@@ -12,14 +12,9 @@ import (
 
 // --- Notification channel config types ---
 
+// Email channel: user only configures recipient address; SMTP uses global config.
 type emailNotifyConfig struct {
-	SMTPHost  string `json:"smtp_host"`
-	SMTPPort  int    `json:"smtp_port"`
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	FromName  string `json:"from_name"`
-	FromEmail string `json:"from_email"`
-	TLSMode   string `json:"tls_mode"`
+	RecipientEmail string `json:"recipient_email"`
 }
 
 type gotifyNotifyConfig struct {
@@ -31,6 +26,18 @@ type barkNotifyConfig struct {
 	ServerURL string `json:"server_url"`
 	DeviceKey string `json:"device_key"`
 }
+
+// --- Notification event types ---
+const (
+	notifyEventLogin          = "login"
+	notifyEventClockinSuccess = "clockin_success"
+	notifyEventClockinFailed  = "clockin_failed"
+)
+
+// --- DB table: notification_channels ---
+// channel_type: "email", "gotify", "bark"
+// config_json: JSON of the above config structs
+// notify_events: comma-separated event types, e.g. "login,clockin_success,clockin_failed"
 
 // --- API handlers ---
 
@@ -52,7 +59,7 @@ func (a *App) getNotifyChannels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := a.db.Query(`SELECT channel_type, enabled, config_json FROM notification_channels WHERE user_id = ?`, user.ID)
+	rows, err := a.db.Query(`SELECT channel_type, enabled, config_json, notify_events FROM notification_channels WHERE user_id = ?`, user.ID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, "查询通知渠道失败", nil)
 		return
@@ -63,19 +70,17 @@ func (a *App) getNotifyChannels(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var chType string
 		var enabled int
-		var cfgJSON string
-		if err := rows.Scan(&chType, &enabled, &cfgJSON); err != nil {
+		var cfgJSON, notifyEvents string
+		if err := rows.Scan(&chType, &enabled, &cfgJSON, &notifyEvents); err != nil {
 			continue
 		}
 		var cfg map[string]any
 		_ = json.Unmarshal([]byte(cfgJSON), &cfg)
-		// Mask passwords
-		if pw, ok := cfg["password"]; ok && pw != nil {
-			if s, ok := pw.(string); ok && len(s) > 0 {
-				cfg["password"] = "******"
-			}
+		channels[chType] = map[string]any{
+			"enabled":       enabled == 1,
+			"config":        cfg,
+			"notify_events": notifyEvents,
 		}
-		channels[chType] = map[string]any{"enabled": enabled == 1, "config": cfg}
 	}
 	writeJSON(w, http.StatusOK, "ok", channels)
 }
@@ -88,9 +93,10 @@ func (a *App) putNotifyChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		ChannelType string         `json:"channel_type"`
-		Enabled     bool           `json:"enabled"`
-		Config      map[string]any `json:"config"`
+		ChannelType  string         `json:"channel_type"`
+		Enabled      bool           `json:"enabled"`
+		Config       map[string]any `json:"config"`
+		NotifyEvents string         `json:"notify_events"`
 	}
 	if !decodeJSONBody(w, r, &payload) {
 		return
@@ -102,14 +108,17 @@ func (a *App) putNotifyChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate notify_events
+	events := normalizeNotifyEvents(payload.NotifyEvents)
+
 	cfgJSON, _ := json.Marshal(payload.Config)
 
 	now := time.Now().UTC()
-	_, err = a.db.Exec(`INSERT INTO notification_channels (user_id, channel_type, enabled, config_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+	_, err = a.db.Exec(`INSERT INTO notification_channels (user_id, channel_type, enabled, config_json, notify_events, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, channel_type) DO UPDATE SET
-		enabled=excluded.enabled, config_json=excluded.config_json, updated_at=excluded.updated_at`,
-		user.ID, chType, boolToInt(payload.Enabled), string(cfgJSON), now, now)
+		enabled=excluded.enabled, config_json=excluded.config_json, notify_events=excluded.notify_events, updated_at=excluded.updated_at`,
+		user.ID, chType, boolToInt(payload.Enabled), string(cfgJSON), events, now, now)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, "保存通知渠道失败", nil)
 		return
@@ -147,8 +156,9 @@ func (a *App) handleNotifyTest(w http.ResponseWriter, r *http.Request) {
 
 // --- Notification dispatch ---
 
-func (a *App) sendUserNotifications(userID int64, title, body string) {
-	rows, err := a.db.Query(`SELECT channel_type, config_json FROM notification_channels WHERE user_id = ? AND enabled = 1`, userID)
+// sendUserNotifications sends a notification of a specific event to all enabled channels that subscribe to that event.
+func (a *App) sendUserNotifications(userID int64, eventType, title, body string) {
+	rows, err := a.db.Query(`SELECT channel_type, config_json, notify_events FROM notification_channels WHERE user_id = ? AND enabled = 1`, userID)
 	if err != nil {
 		log.Printf("查询用户通知渠道失败 user=%d: %v", userID, err)
 		return
@@ -156,12 +166,15 @@ func (a *App) sendUserNotifications(userID int64, title, body string) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var chType, cfgJSON string
-		if err := rows.Scan(&chType, &cfgJSON); err != nil {
+		var chType, cfgJSON, notifyEvents string
+		if err := rows.Scan(&chType, &cfgJSON, &notifyEvents); err != nil {
+			continue
+		}
+		if !eventSubscribed(notifyEvents, eventType) {
 			continue
 		}
 		if err := a.dispatchNotification(chType, cfgJSON, title, body); err != nil {
-			log.Printf("发送通知失败 user=%d channel=%s: %v", userID, chType, err)
+			log.Printf("发送通知失败 user=%d channel=%s event=%s: %v", userID, chType, eventType, err)
 		}
 	}
 }
@@ -205,19 +218,17 @@ func (a *App) dispatchNotification(channelType, cfgJSON, title, body string) err
 }
 
 func (a *App) sendNotifyEmail(cfg emailNotifyConfig, subject, body string) error {
-	msg := buildMIMEMessage(cfg.FromName, cfg.FromEmail, cfg.Username, subject, body,
-		"<html><body><p>"+body+"</p></body></html>")
-
-	smtpCfg := SMTPSection{
-		Host: cfg.SMTPHost, Port: cfg.SMTPPort,
-		Username: cfg.Username, Password: cfg.Password,
-		FromEmail: cfg.FromEmail, TLSMode: cfg.TLSMode,
+	if !a.cfg.SMTP.Enabled {
+		log.Printf("[DEV] 通知邮件 to=%s subject=%s", cfg.RecipientEmail, subject)
+		return nil
 	}
-	oldSMTP := a.cfg.SMTP
-	a.cfg.SMTP = smtpCfg
-	err := a.sendSMTPMail(cfg.Username, msg)
-	a.cfg.SMTP = oldSMTP
-	return err
+	to := cfg.RecipientEmail
+	if to == "" {
+		return fmt.Errorf("收件人邮箱未配置")
+	}
+	msg := buildMIMEMessage(a.cfg.SMTP.FromName, a.cfg.SMTP.FromEmail, to, subject, body,
+		"<html><body><p>"+body+"</p></body></html>")
+	return a.sendSMTPMail(to, msg)
 }
 
 func sendGotifyNotification(cfg gotifyNotifyConfig, title, body string) error {
@@ -245,4 +256,53 @@ func sendBarkNotification(cfg barkNotifyConfig, title, body string) error {
 		return fmt.Errorf("Bark 返回状态码 %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// --- Helper: auto-create default email notification channel for a new user ---
+
+func (a *App) createDefaultEmailNotifyChannel(userID int64, email string) {
+	cfg := emailNotifyConfig{RecipientEmail: email}
+	cfgJSON, _ := json.Marshal(cfg)
+	events := "login,clockin_success,clockin_failed"
+	now := time.Now().UTC()
+	_, err := a.db.Exec(`INSERT INTO notification_channels (user_id, channel_type, enabled, config_json, notify_events, created_at, updated_at)
+		VALUES (?, 'email', 1, ?, ?, ?, ?)
+		ON CONFLICT(user_id, channel_type) DO NOTHING`,
+		userID, string(cfgJSON), events, now, now)
+	if err != nil {
+		log.Printf("创建默认邮件通知渠道失败 user=%d: %v", userID, err)
+	}
+}
+
+// --- Helper: event subscription check ---
+
+func normalizeNotifyEvents(raw string) string {
+	valid := map[string]bool{
+		notifyEventLogin:          true,
+		notifyEventClockinSuccess: true,
+		notifyEventClockinFailed:  true,
+	}
+	var out []string
+	for _, s := range strings.Split(raw, ",") {
+		s = strings.TrimSpace(s)
+		if valid[s] {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return "login,clockin_success,clockin_failed"
+	}
+	return strings.Join(out, ",")
+}
+
+func eventSubscribed(notifyEvents, eventType string) bool {
+	if notifyEvents == "" {
+		return true // backward compat: if empty, subscribe to all
+	}
+	for _, s := range strings.Split(notifyEvents, ",") {
+		if strings.TrimSpace(s) == eventType {
+			return true
+		}
+	}
+	return false
 }

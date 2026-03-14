@@ -28,6 +28,8 @@ type ServerSection struct {
 	ReadTimeoutSec  int    `json:"read_timeout_sec"`
 	WriteTimeoutSec int    `json:"write_timeout_sec"`
 	IdleTimeoutSec  int    `json:"idle_timeout_sec"`
+	RealIPHeader    string `json:"real_ip_header"`
+	HelpURL         string `json:"help_url"`
 }
 
 type AdminSection struct {

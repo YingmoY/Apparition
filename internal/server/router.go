@@ -60,6 +60,9 @@ func (a *App) router() http.Handler {
 	mux.HandleFunc("/api/v1/notify/channels", a.handleNotifyChannels)
 	mux.HandleFunc("/api/v1/notify/test", a.handleNotifyTest)
 
+	// settings (public)
+	mux.HandleFunc("/api/v1/settings", a.handlePublicSettings)
+
 	// admin
 	mux.HandleFunc("/api/v1/admin/users", a.handleAdminUsers)
 	mux.HandleFunc("/api/v1/admin/runs", a.handleAdminRuns)
@@ -108,7 +111,14 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
-func extractClientIP(r *http.Request) string {
+func (a *App) extractClientIP(r *http.Request) string {
+	if h := strings.TrimSpace(a.cfg.Server.RealIPHeader); h != "" {
+		if val := strings.TrimSpace(r.Header.Get(h)); val != "" {
+			if parts := strings.SplitN(val, ",", 2); len(parts) > 0 {
+				return strings.TrimSpace(parts[0])
+			}
+		}
+	}
 	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
 		if parts := strings.SplitN(xff, ",", 2); len(parts) > 0 {
 			return strings.TrimSpace(parts[0])
@@ -122,6 +132,16 @@ func extractClientIP(r *http.Request) string {
 		return addr[:idx]
 	}
 	return addr
+}
+
+func (a *App) handlePublicSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, "ok", map[string]any{
+		"help_url": a.cfg.Server.HelpURL,
+	})
 }
 
 func trimTo(s string, max int) string {

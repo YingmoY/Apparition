@@ -69,7 +69,7 @@ func (a *App) handleSendRegisterCode(w http.ResponseWriter, r *http.Request) {
 
 	codeHash := hashVerificationCode(code, email)
 	expireAt := now.Add(emailCodeTTLMinutes * time.Minute)
-	clientIP := extractClientIP(r)
+	clientIP := a.extractClientIP(r)
 
 	_, err = a.db.Exec(`INSERT INTO email_verifications (email, code_hash, expire_at, request_ip, created_at)
 		VALUES (?, ?, ?, ?, ?)`, email, codeHash, expireAt, clientIP, now)
@@ -150,6 +150,10 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	userID, _ := result.LastInsertId()
 	a.writeAuditLog(&userID, "user", "register", "users", fmt.Sprintf("%d", userID), "用户完成注册", map[string]any{"email": email})
+
+	// Auto-create default email notification channel
+	a.createDefaultEmailNotifyChannel(userID, email)
+
 	writeJSON(w, http.StatusOK, "ok", map[string]any{"id": userID, "email": email, "nickname": nickname})
 }
 
@@ -195,13 +199,18 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	expireAt := now.Add(ttl)
 	_, err = a.db.Exec(`INSERT INTO sessions (user_id, token_hash, user_agent, client_ip, expire_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)`, user.ID, tokenHash, trimTo(r.UserAgent(), 512), extractClientIP(r), expireAt, now)
+		VALUES (?, ?, ?, ?, ?, ?)`, user.ID, tokenHash, trimTo(r.UserAgent(), 512), a.extractClientIP(r), expireAt, now)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, "创建会话失败", nil)
 		return
 	}
 	_, _ = a.db.Exec(`UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?`, now, now, user.ID)
-	a.writeAuditLog(&user.ID, "user", "login", "sessions", tokenHash, "用户登录成功", map[string]any{"ip": extractClientIP(r)})
+	a.writeAuditLog(&user.ID, "user", "login", "sessions", tokenHash, "用户登录成功", map[string]any{"ip": a.extractClientIP(r)})
+
+	// Send login notification (async)
+	go a.sendUserNotifications(user.ID, notifyEventLogin, "新设备登录通知",
+		fmt.Sprintf("您的账号 %s 于 %s 从 IP %s 登录。如非本人操作，请及时修改密码。",
+			user.Email, now.Format("2006-01-02 15:04:05"), a.extractClientIP(r)))
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,

@@ -128,6 +128,7 @@ func migrateDatabase(db *sql.DB) error {
 			channel_type TEXT NOT NULL,
 			enabled      INTEGER NOT NULL DEFAULT 0,
 			config_json  TEXT NOT NULL DEFAULT '{}',
+			notify_events TEXT NOT NULL DEFAULT 'login,clockin_success,clockin_failed',
 			created_at   DATETIME NOT NULL,
 			updated_at   DATETIME NOT NULL,
 			UNIQUE(user_id, channel_type)
@@ -138,5 +139,13 @@ func migrateDatabase(db *sql.DB) error {
 			return fmt.Errorf("执行迁移失败: %w\nSQL: %s", err, s)
 		}
 	}
+
+	// Safe column additions for existing databases
+	safeAddColumn(db, "notification_channels", "notify_events", "TEXT NOT NULL DEFAULT 'login,clockin_success,clockin_failed'")
+
 	return nil
+}
+
+func safeAddColumn(db *sql.DB, table, column, colDef string) {
+	_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, colDef))
 }
