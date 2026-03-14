@@ -47,19 +47,37 @@
         if (countdown > 0) return;
         var email = document.querySelector("input[name='email']").value.trim();
         if (!email) { layer.msg("请先输入邮箱"); return; }
+        sendBtn.disabled = true;
+        sendBtn.textContent = "发送中...";
+        sendBtn.classList.add("layui-btn-disabled");
         fetch("/api/v1/auth/email/send", {
           method: "POST", headers: {"Content-Type": "application/json"},
           body: JSON.stringify({ email: email })
         }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
           .then(function (r) {
-            if (!r.ok) { layer.msg(r.data.message || "发送失败"); return; }
+            if (!r.ok) {
+              layer.msg(r.data.message || "发送失败");
+              sendBtn.disabled = false;
+              sendBtn.textContent = "发送验证码";
+              sendBtn.classList.remove("layui-btn-disabled");
+              return;
+            }
             layer.msg("验证码已发送");
             countdown = 60;
             var timer = setInterval(function () {
               countdown--;
               sendBtn.textContent = countdown > 0 ? countdown + "s" : "发送验证码";
-              if (countdown <= 0) clearInterval(timer);
+              if (countdown <= 0) {
+                clearInterval(timer);
+                sendBtn.disabled = false;
+                sendBtn.classList.remove("layui-btn-disabled");
+              }
             }, 1000);
+          }).catch(function () {
+            sendBtn.disabled = false;
+            sendBtn.textContent = "发送验证码";
+            sendBtn.classList.remove("layui-btn-disabled");
+            layer.msg("网络错误");
           });
       });
 

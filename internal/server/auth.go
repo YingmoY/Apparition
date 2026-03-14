@@ -410,7 +410,6 @@ func (a *App) consumeVerificationCode(email, code string, now time.Time) (bool, 
 	if err != nil {
 		return false, err
 	}
-	defer rows.Close()
 
 	incoming := hashVerificationCode(code, email)
 	var selectedID int64
@@ -421,6 +420,7 @@ func (a *App) consumeVerificationCode(email, code string, now time.Time) (bool, 
 			expireAt time.Time
 		)
 		if err := rows.Scan(&id, &codeHash, &expireAt); err != nil {
+			rows.Close()
 			return false, err
 		}
 		if now.After(expireAt) {
@@ -432,8 +432,13 @@ func (a *App) consumeVerificationCode(email, code string, now time.Time) (bool, 
 		}
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return false, err
 	}
+	// Close rows BEFORE executing the UPDATE to release the DB connection.
+	// With MaxOpenConns(1), the Exec below would deadlock if rows still held the conn.
+	rows.Close()
+
 	if selectedID == 0 {
 		return false, nil
 	}

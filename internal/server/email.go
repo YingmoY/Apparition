@@ -79,7 +79,8 @@ func (a *App) sendSMTPMail(to string, msg []byte) error {
 
 func sendSMTPOverTLS(addr, host, user, pass, from, to string, msg []byte) error {
 	tlsCfg := &tls.Config{ServerName: host}
-	conn, err := tls.Dial("tcp", addr, tlsCfg)
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	conn, err := tls.DialWithDialer(dialer, "tcp", addr, tlsCfg)
 	if err != nil {
 		return fmt.Errorf("TLS dial: %w", err)
 	}
