@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -150,192 +149,105 @@ func (a *App) putClockinProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, "ok", nil)
 }
 
-// --- Job handlers ---
+// --- Schedule (single job per user) ---
 
-func (a *App) handleClockinJobs(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleClockinSchedule(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		a.getClockinJobs(w, r)
-	case http.MethodPost:
-		a.createClockinJob(w, r)
+		a.getClockinSchedule(w, r)
+	case http.MethodPut:
+		a.putClockinSchedule(w, r)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
 	}
 }
 
-func (a *App) handleClockinJobActions(w http.ResponseWriter, r *http.Request) {
-	// /api/v1/clockin/jobs/{id} or /api/v1/clockin/jobs/{id}/run
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/clockin/jobs/")
-	parts := strings.SplitN(path, "/", 2)
-	jobID, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, "无效的任务 ID", nil)
-		return
-	}
-
-	if len(parts) == 2 && parts[1] == "run" && r.Method == http.MethodPost {
-		a.runClockinJobManually(w, r, jobID)
-		return
-	}
-	if r.Method == http.MethodPut {
-		a.updateClockinJob(w, r, jobID)
-		return
-	}
-	writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
-}
-
-func (a *App) getClockinJobs(w http.ResponseWriter, r *http.Request) {
-	user, _, err := a.currentUserFromRequest(r)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, "未登录", nil)
-		return
-	}
-	rows, err := a.db.Query(`SELECT id, enabled, schedule_type, schedule_value, next_run_at, last_run_at, retry_policy, created_at
-		FROM clockin_jobs WHERE user_id = ? ORDER BY created_at DESC`, user.ID)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, "查询任务失败", nil)
-		return
-	}
-	defer rows.Close()
-
-	items := make([]map[string]any, 0)
-	for rows.Next() {
-		var (
-			id                         int64
-			enabled                    int
-			stype, svalue, retryPolicy string
-			nextRunAt                  time.Time
-			lastRunAt                  sql.NullTime
-			createdAt                  time.Time
-		)
-		if err := rows.Scan(&id, &enabled, &stype, &svalue, &nextRunAt, &lastRunAt, &retryPolicy, &createdAt); err != nil {
-			continue
-		}
-		item := map[string]any{
-			"id": id, "enabled": enabled == 1, "schedule_type": stype, "schedule_value": svalue,
-			"next_run_at": nextRunAt.Format(time.RFC3339), "retry_policy": retryPolicy,
-			"created_at": createdAt.Format(time.RFC3339),
-		}
-		if lastRunAt.Valid {
-			item["last_run_at"] = lastRunAt.Time.Format(time.RFC3339)
-		}
-		items = append(items, item)
-	}
-	writeJSON(w, http.StatusOK, "ok", items)
-}
-
-func (a *App) createClockinJob(w http.ResponseWriter, r *http.Request) {
-	user, _, err := a.currentUserFromRequest(r)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, "未登录", nil)
-		return
-	}
-	var payload struct {
-		Enabled       bool   `json:"enabled"`
-		ScheduleType  string `json:"schedule_type"`
-		ScheduleValue string `json:"schedule_value"`
-		RetryPolicy   string `json:"retry_policy"`
-	}
-	if !decodeJSONBody(w, r, &payload) {
-		return
-	}
-	if err := validateJobPayload(payload.ScheduleType, payload.ScheduleValue); err != nil {
-		writeJSON(w, http.StatusBadRequest, err.Error(), nil)
-		return
-	}
-	if payload.RetryPolicy == "" {
-		payload.RetryPolicy = "immediate_once"
-	}
-
-	now := time.Now().UTC()
-	nextRun, err := calcNextRunAt(payload.ScheduleType, payload.ScheduleValue, now)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, "计算调度时间失败: "+err.Error(), nil)
-		return
-	}
-
-	result, err := a.db.Exec(`INSERT INTO clockin_jobs (user_id, enabled, schedule_type, schedule_value, next_run_at, retry_policy, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		user.ID, boolToInt(payload.Enabled), payload.ScheduleType, payload.ScheduleValue, nextRun.UTC(), payload.RetryPolicy, now, now)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, "创建任务失败", nil)
-		return
-	}
-	jobID, _ := result.LastInsertId()
-	a.writeAuditLog(&user.ID, "user", "create_clockin_job", "clockin_jobs", fmt.Sprintf("%d", jobID), "创建打卡任务", nil)
-	writeJSON(w, http.StatusOK, "ok", map[string]any{"id": jobID, "next_run_at": nextRun.Format(time.RFC3339)})
-}
-
-func (a *App) updateClockinJob(w http.ResponseWriter, r *http.Request, jobID int64) {
+func (a *App) getClockinSchedule(w http.ResponseWriter, r *http.Request) {
 	user, _, err := a.currentUserFromRequest(r)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
-	// Verify ownership
-	var ownerID int64
-	if err := a.db.QueryRow(`SELECT user_id FROM clockin_jobs WHERE id = ?`, jobID).Scan(&ownerID); err != nil {
-		writeJSON(w, http.StatusNotFound, "任务不存在", nil)
+	var (
+		id        int64
+		enabled   int
+		cronExpr  string
+		lastRunAt sql.NullTime
+		createdAt time.Time
+	)
+	err = a.db.QueryRow(`SELECT id, enabled, cron_expr, last_run_at, created_at
+		FROM clockin_jobs WHERE user_id = ?`, user.ID).Scan(&id, &enabled, &cronExpr, &lastRunAt, &createdAt)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusOK, "ok", nil)
 		return
 	}
-	if ownerID != user.ID {
-		writeJSON(w, http.StatusForbidden, "无权限", nil)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, "查询定时任务失败", nil)
+		return
+	}
+	result := map[string]any{
+		"id": id, "enabled": enabled == 1, "cron_expr": cronExpr,
+		"created_at": createdAt.Format(time.RFC3339),
+	}
+	if lastRunAt.Valid {
+		result["last_run_at"] = lastRunAt.Time.Format(time.RFC3339)
+	}
+	writeJSON(w, http.StatusOK, "ok", result)
+}
+
+func (a *App) putClockinSchedule(w http.ResponseWriter, r *http.Request) {
+	user, _, err := a.currentUserFromRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
 
 	var payload struct {
-		Enabled       *bool  `json:"enabled"`
-		ScheduleType  string `json:"schedule_type"`
-		ScheduleValue string `json:"schedule_value"`
+		Enabled  bool   `json:"enabled"`
+		CronExpr string `json:"cron_expr"`
 	}
 	if !decodeJSONBody(w, r, &payload) {
 		return
 	}
 
-	now := time.Now().UTC()
-	if payload.ScheduleType != "" && payload.ScheduleValue != "" {
-		if err := validateJobPayload(payload.ScheduleType, payload.ScheduleValue); err != nil {
-			writeJSON(w, http.StatusBadRequest, err.Error(), nil)
+	cronExpr := strings.TrimSpace(payload.CronExpr)
+	if cronExpr != "" {
+		if err := a.validateCronExpr(cronExpr); err != nil {
+			writeJSON(w, http.StatusBadRequest, "cron 表达式无效: "+err.Error(), nil)
 			return
 		}
-		nextRun, err := calcNextRunAt(payload.ScheduleType, payload.ScheduleValue, now)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, "计算调度时间失败", nil)
-			return
-		}
-		_, err = a.db.Exec(`UPDATE clockin_jobs SET schedule_type = ?, schedule_value = ?, next_run_at = ?, updated_at = ? WHERE id = ?`,
-			payload.ScheduleType, payload.ScheduleValue, nextRun.UTC(), now, jobID)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, "更新任务失败", nil)
-			return
-		}
-	}
-	if payload.Enabled != nil {
-		_, _ = a.db.Exec(`UPDATE clockin_jobs SET enabled = ?, updated_at = ? WHERE id = ?`, boolToInt(*payload.Enabled), now, jobID)
 	}
 
-	a.writeAuditLog(&user.ID, "user", "update_clockin_job", "clockin_jobs", fmt.Sprintf("%d", jobID), "更新打卡任务", nil)
+	now := time.Now().UTC()
+	_, err = a.db.Exec(`INSERT INTO clockin_jobs (user_id, enabled, cron_expr, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET
+		enabled=excluded.enabled, cron_expr=excluded.cron_expr, updated_at=excluded.updated_at`,
+		user.ID, boolToInt(payload.Enabled), cronExpr, now, now)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, "保存定时任务失败", nil)
+		return
+	}
+
+	a.reloadCron()
+
+	a.writeAuditLog(&user.ID, "user", "update_clockin_schedule", "clockin_jobs", formatUserID(user.ID), "更新打卡定时任务", nil)
 	writeJSON(w, http.StatusOK, "ok", nil)
 }
 
-func (a *App) runClockinJobManually(w http.ResponseWriter, r *http.Request, jobID int64) {
+func (a *App) handleClockinManualRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+		return
+	}
 	user, _, err := a.currentUserFromRequest(r)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, "未登录", nil)
 		return
 	}
-	var ownerID int64
-	if err := a.db.QueryRow(`SELECT user_id FROM clockin_jobs WHERE id = ?`, jobID).Scan(&ownerID); err != nil {
-		writeJSON(w, http.StatusNotFound, "任务不存在", nil)
-		return
-	}
-	if ownerID != user.ID {
-		writeJSON(w, http.StatusForbidden, "无权限", nil)
-		return
-	}
 
-	runID, status, message := a.executeClockinRun(user.ID, &jobID, "manual")
+	runID, status, message := a.executeClockinRun(user.ID, "manual")
 	writeJSON(w, http.StatusOK, "ok", map[string]any{"run_id": runID, "status": status, "message": message})
 }
 
@@ -356,7 +268,7 @@ func (a *App) handleClockinRuns(w http.ResponseWriter, r *http.Request) {
 	var total int
 	_ = a.db.QueryRow(`SELECT COUNT(1) FROM clockin_runs WHERE user_id = ?`, user.ID).Scan(&total)
 
-	rows, err := a.db.Query(`SELECT id, job_id, trigger_type, status, message, started_at, finished_at, run_date
+	rows, err := a.db.Query(`SELECT id, trigger_type, status, message, started_at, finished_at, run_date
 		FROM clockin_runs WHERE user_id = ? ORDER BY started_at DESC LIMIT ? OFFSET ?`, user.ID, p.PageSize, p.Offset)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, "查询执行记录失败", nil)
@@ -368,22 +280,17 @@ func (a *App) handleClockinRuns(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var (
 			id                                    int64
-			jobID                                 sql.NullInt64
 			triggerType, status, message, runDate string
 			startedAt, finishedAt                 time.Time
 		)
-		if err := rows.Scan(&id, &jobID, &triggerType, &status, &message, &startedAt, &finishedAt, &runDate); err != nil {
+		if err := rows.Scan(&id, &triggerType, &status, &message, &startedAt, &finishedAt, &runDate); err != nil {
 			continue
 		}
-		item := map[string]any{
+		items = append(items, map[string]any{
 			"id": id, "trigger_type": triggerType, "status": status, "message": message,
 			"started_at": startedAt.Format(time.RFC3339), "finished_at": finishedAt.Format(time.RFC3339),
 			"run_date": runDate,
-		}
-		if jobID.Valid {
-			item["job_id"] = jobID.Int64
-		}
-		items = append(items, item)
+		})
 	}
 
 	writeJSON(w, http.StatusOK, "ok", map[string]any{
@@ -394,23 +301,23 @@ func (a *App) handleClockinRuns(w http.ResponseWriter, r *http.Request) {
 
 // --- Core execution logic ---
 
-func (a *App) executeClockinRun(userID int64, jobID *int64, triggerType string) (int64, string, string) {
+func (a *App) executeClockinRun(userID int64, triggerType string) (int64, string, string) {
 	startedAt := time.Now().UTC()
 	runDate := startedAt.Format("20060102")
 
 	cfg, err := a.loadCoreConfigFromProfile(userID)
 	if err != nil {
-		return a.insertClockinRun(userID, jobID, triggerType, "failed", "加载打卡配置失败: "+err.Error(), startedAt, runDate)
+		return a.insertClockinRun(userID, triggerType, "failed", "加载打卡配置失败: "+err.Error(), startedAt, runDate)
 	}
 
 	cookieData, err := a.loadCookieDataFromDB(userID)
 	if err != nil {
-		return a.insertClockinRun(userID, jobID, triggerType, "failed", "加载 Cookie 失败: "+err.Error(), startedAt, runDate)
+		return a.insertClockinRun(userID, triggerType, "failed", "加载 Cookie 失败: "+err.Error(), startedAt, runDate)
 	}
 
 	client, err := core.NewClockInClient(cfg, cookieData)
 	if err != nil {
-		return a.insertClockinRun(userID, jobID, triggerType, "failed", "创建打卡客户端失败: "+err.Error(), startedAt, runDate)
+		return a.insertClockinRun(userID, triggerType, "failed", "创建打卡客户端失败: "+err.Error(), startedAt, runDate)
 	}
 
 	result := client.Run()
@@ -419,17 +326,23 @@ func (a *App) executeClockinRun(userID int64, jobID *int64, triggerType string) 
 	if result.Success {
 		status = "success"
 	}
-	return a.insertClockinRun(userID, jobID, triggerType, status, result.Message, startedAt, runDate)
+	runID, finalStatus, finalMsg := a.insertClockinRun(userID, triggerType, status, result.Message, startedAt, runDate)
+
+	_, _ = a.db.Exec(`UPDATE clockin_jobs SET last_run_at = ?, updated_at = ? WHERE user_id = ?`, time.Now().UTC(), time.Now().UTC(), userID)
+
+	title := "打卡成功"
+	if status == "failed" {
+		title = "打卡失败"
+	}
+	go a.sendUserNotifications(userID, title, result.Message)
+
+	return runID, finalStatus, finalMsg
 }
 
-func (a *App) insertClockinRun(userID int64, jobID *int64, triggerType, status, message string, startedAt time.Time, runDate string) (int64, string, string) {
+func (a *App) insertClockinRun(userID int64, triggerType, status, message string, startedAt time.Time, runDate string) (int64, string, string) {
 	finishedAt := time.Now().UTC()
-	var jid sql.NullInt64
-	if jobID != nil {
-		jid = sql.NullInt64{Int64: *jobID, Valid: true}
-	}
 	result, err := a.db.Exec(`INSERT INTO clockin_runs (user_id, job_id, trigger_type, status, message, started_at, finished_at, run_date)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, userID, jid, triggerType, status, message, startedAt, finishedAt, runDate)
+		VALUES (?, NULL, ?, ?, ?, ?, ?, ?)`, userID, triggerType, status, message, startedAt, finishedAt, runDate)
 	if err != nil {
 		log.Printf("插入执行记录失败: %v", err)
 		return 0, status, message
@@ -466,49 +379,4 @@ func (a *App) loadCookieDataFromDB(userID int64) (core.CookieData, error) {
 		return core.CookieData{}, fmt.Errorf("解析 Cookie 失败: %w", err)
 	}
 	return cd, nil
-}
-
-// --- Schedule helpers ---
-
-func validateJobPayload(scheduleType, scheduleValue string) error {
-	switch scheduleType {
-	case "daily":
-		parts := strings.Split(scheduleValue, ":")
-		if len(parts) != 2 {
-			return fmt.Errorf("daily 类型格式为 HH:MM")
-		}
-		h, err1 := strconv.Atoi(parts[0])
-		m, err2 := strconv.Atoi(parts[1])
-		if err1 != nil || err2 != nil || h < 0 || h > 23 || m < 0 || m > 59 {
-			return fmt.Errorf("时间格式错误")
-		}
-	case "fixed_interval":
-		sec, err := strconv.Atoi(scheduleValue)
-		if err != nil || sec < 60 {
-			return fmt.Errorf("fixed_interval 最小间隔 60 秒")
-		}
-	default:
-		return fmt.Errorf("不支持的调度类型: %s", scheduleType)
-	}
-	return nil
-}
-
-func calcNextRunAt(scheduleType, scheduleValue string, now time.Time) (time.Time, error) {
-	loc, _ := time.LoadLocation("Asia/Shanghai")
-	switch scheduleType {
-	case "daily":
-		parts := strings.Split(scheduleValue, ":")
-		h, _ := strconv.Atoi(parts[0])
-		m, _ := strconv.Atoi(parts[1])
-		today := time.Date(now.In(loc).Year(), now.In(loc).Month(), now.In(loc).Day(), h, m, 0, 0, loc)
-		if today.Before(now) {
-			today = today.Add(24 * time.Hour)
-		}
-		return today.UTC(), nil
-	case "fixed_interval":
-		sec, _ := strconv.Atoi(scheduleValue)
-		return now.Add(time.Duration(sec) * time.Second), nil
-	default:
-		return time.Time{}, fmt.Errorf("unknown schedule type: %s", scheduleType)
-	}
 }

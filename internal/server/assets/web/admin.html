@@ -6,52 +6,51 @@
   <title>Apparition - 管理后台</title>
   <link rel="stylesheet" href="https://cdn.staticfile.org/layui/2.9.17/css/layui.css" />
   <style>
-    body { margin: 0; background: linear-gradient(130deg, #fff8f1, #fde9da); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
-    .panel { max-width: 1000px; margin: 24px auto; background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 10px 30px rgba(110,63,15,0.18); }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
+    body { margin: 0; background: #f2f5fa; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+    .panel { max-width: 1000px; margin: 0 auto; padding: 20px 16px 40px; }
+    .header-card { background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 20px 24px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .content-card { background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 20px 24px; }
   </style>
 </head>
 <body>
 <div class="panel">
-  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:16px;">
+  <div class="header-card">
     <div>
-      <h2 style="margin:0;">管理员后台</h2>
-      <div id="status" class="layui-font-gray">正在校验权限...</div>
+      <h2 style="margin:0 0 6px; font-size:20px;">管理员后台</h2>
+      <div id="status" style="color:#666; font-size:13px;">正在校验权限...</div>
     </div>
-    <div>
+    <div style="display:flex; gap:8px;">
       <button id="back" class="layui-btn layui-btn-primary layui-btn-sm">返回控制台</button>
       <button id="logout" class="layui-btn layui-btn-danger layui-btn-sm">退出登录</button>
     </div>
   </div>
 
-  <div class="layui-tab layui-tab-brief">
-    <ul class="layui-tab-title">
-      <li class="layui-this">用户列表</li>
-      <li>打卡记录</li>
-      <li>审计日志</li>
-    </ul>
-    <div class="layui-tab-content">
-      <div class="layui-tab-item layui-show">
-        <table class="layui-table">
-          <thead><tr><th>ID</th><th>邮箱</th><th>昵称</th><th>角色</th><th>状态</th><th>最近登录</th></tr></thead>
-          <tbody id="usersBody"></tbody>
-        </table>
-        <div id="usersPager" style="text-align:center;"></div>
-      </div>
-      <div class="layui-tab-item">
-        <table class="layui-table">
-          <thead><tr><th>ID</th><th>用户</th><th>状态</th><th>触发</th><th>开始时间</th><th>消息</th></tr></thead>
-          <tbody id="runsBody"></tbody>
-        </table>
-        <div id="runsPager" style="text-align:center;"></div>
-      </div>
-      <div class="layui-tab-item">
-        <table class="layui-table">
-          <thead><tr><th>ID</th><th>用户ID</th><th>动作</th><th>目标</th><th>摘要</th><th>时间</th></tr></thead>
-          <tbody id="logsBody"></tbody>
-        </table>
-        <div id="logsPager" style="text-align:center;"></div>
+  <div class="content-card">
+    <div class="layui-tab layui-tab-brief" style="margin:0;">
+      <ul class="layui-tab-title">
+        <li class="layui-this">用户列表</li>
+        <li>打卡记录</li>
+        <li>审计日志</li>
+      </ul>
+      <div class="layui-tab-content" style="padding-top:12px;">
+        <div class="layui-tab-item layui-show">
+          <table class="layui-table" lay-size="sm">
+            <thead><tr><th>ID</th><th>邮箱</th><th>昵称</th><th>角色</th><th>状态</th><th>最近登录</th></tr></thead>
+            <tbody id="usersBody"></tbody>
+          </table>
+        </div>
+        <div class="layui-tab-item">
+          <table class="layui-table" lay-size="sm">
+            <thead><tr><th>ID</th><th>用户</th><th>状态</th><th>触发</th><th>开始时间</th><th>消息</th></tr></thead>
+            <tbody id="runsBody"></tbody>
+          </table>
+        </div>
+        <div class="layui-tab-item">
+          <table class="layui-table" lay-size="sm">
+            <thead><tr><th>ID</th><th>用户ID</th><th>动作</th><th>目标</th><th>摘要</th><th>时间</th></tr></thead>
+            <tbody id="logsBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -69,6 +68,10 @@ layui.use(["layer", "element"], function () {
   }
 
   function esc(s) { if (s == null) return "-"; var d = document.createElement("div"); d.textContent = String(s); return d.innerHTML; }
+  function localTime(s) {
+    if (!s) return "-";
+    try { return new Date(s).toLocaleString("zh-CN", { hour12: false }); } catch(e) { return s; }
+  }
 
   function ensureAdmin() {
     return api("/api/v1/auth/me").then(function (r) {
@@ -91,7 +94,7 @@ layui.use(["layer", "element"], function () {
       (r.data.data.items || []).forEach(function (u) {
         var tr = document.createElement("tr");
         tr.innerHTML = "<td>" + u.id + "</td><td>" + esc(u.email) + "</td><td>" + esc(u.nickname)
-          + "</td><td>" + esc(u.role) + "</td><td>" + esc(u.status) + "</td><td>" + esc(u.last_login_at) + "</td>";
+          + "</td><td>" + esc(u.role) + "</td><td>" + esc(u.status) + "</td><td>" + localTime(u.last_login_at) + "</td>";
         body.appendChild(tr);
       });
     });
@@ -104,9 +107,9 @@ layui.use(["layer", "element"], function () {
       var body = document.getElementById("runsBody"); body.innerHTML = "";
       (r.data.data.items || []).forEach(function (run) {
         var tr = document.createElement("tr");
-        var sc = run.status === "success" ? "style='color:green'" : "style='color:red'";
+        var sc = run.status === "success" ? "style='color:#52c41a;font-weight:600'" : "style='color:#f5222d;font-weight:600'";
         tr.innerHTML = "<td>" + run.id + "</td><td>" + esc(run.email) + "</td><td " + sc + ">" + esc(run.status)
-          + "</td><td>" + esc(run.trigger_type) + "</td><td>" + esc(run.started_at) + "</td><td>" + esc(run.message) + "</td>";
+          + "</td><td>" + esc(run.trigger_type) + "</td><td>" + localTime(run.started_at) + "</td><td>" + esc(run.message) + "</td>";
         body.appendChild(tr);
       });
     });
@@ -120,7 +123,7 @@ layui.use(["layer", "element"], function () {
       (r.data.data.items || []).forEach(function (log) {
         var tr = document.createElement("tr");
         tr.innerHTML = "<td>" + log.id + "</td><td>" + esc(log.user_id) + "</td><td>" + esc(log.action)
-          + "</td><td>" + esc(log.target_type) + "</td><td>" + esc(log.summary) + "</td><td>" + esc(log.created_at) + "</td>";
+          + "</td><td>" + esc(log.target_type) + "</td><td>" + esc(log.summary) + "</td><td>" + localTime(log.created_at) + "</td>";
         body.appendChild(tr);
       });
     });

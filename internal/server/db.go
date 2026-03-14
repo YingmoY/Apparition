@@ -89,18 +89,13 @@ func migrateDatabase(db *sql.DB) error {
 		)`,
 		`CREATE TABLE IF NOT EXISTS clockin_jobs (
 			id             INTEGER PRIMARY KEY AUTOINCREMENT,
-			user_id        INTEGER NOT NULL REFERENCES users(id),
-			enabled        INTEGER NOT NULL DEFAULT 1,
-			schedule_type  TEXT NOT NULL,
-			schedule_value TEXT NOT NULL,
-			next_run_at    DATETIME NOT NULL,
+			user_id        INTEGER NOT NULL UNIQUE REFERENCES users(id),
+			enabled        INTEGER NOT NULL DEFAULT 0,
+			cron_expr      TEXT NOT NULL DEFAULT '',
 			last_run_at    DATETIME NULL,
-			retry_policy   TEXT NOT NULL DEFAULT 'immediate_once',
 			created_at     DATETIME NOT NULL,
 			updated_at     DATETIME NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_jobs_enabled_next ON clockin_jobs(enabled, next_run_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_jobs_user ON clockin_jobs(user_id)`,
 		`CREATE TABLE IF NOT EXISTS clockin_runs (
 			id           INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id      INTEGER NOT NULL REFERENCES users(id),
@@ -127,6 +122,16 @@ func migrateDatabase(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id, created_at DESC)`,
+		`CREATE TABLE IF NOT EXISTS notification_channels (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id      INTEGER NOT NULL REFERENCES users(id),
+			channel_type TEXT NOT NULL,
+			enabled      INTEGER NOT NULL DEFAULT 0,
+			config_json  TEXT NOT NULL DEFAULT '{}',
+			created_at   DATETIME NOT NULL,
+			updated_at   DATETIME NOT NULL,
+			UNIQUE(user_id, channel_type)
+		)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {

@@ -45,8 +45,8 @@ func (a *App) router() http.Handler {
 
 	// clockin
 	mux.HandleFunc("/api/v1/clockin/profile", a.handleClockinProfile)
-	mux.HandleFunc("/api/v1/clockin/jobs", a.handleClockinJobs)
-	mux.HandleFunc("/api/v1/clockin/jobs/", a.handleClockinJobActions)
+	mux.HandleFunc("/api/v1/clockin/schedule", a.handleClockinSchedule)
+	mux.HandleFunc("/api/v1/clockin/run", a.handleClockinManualRun)
 	mux.HandleFunc("/api/v1/clockin/runs", a.handleClockinRuns)
 
 	// wps
@@ -55,6 +55,10 @@ func (a *App) router() http.Handler {
 
 	// audit
 	mux.HandleFunc("/api/v1/audit/logs", a.handleAuditLogs)
+
+	// notifications
+	mux.HandleFunc("/api/v1/notify/channels", a.handleNotifyChannels)
+	mux.HandleFunc("/api/v1/notify/test", a.handleNotifyTest)
 
 	// admin
 	mux.HandleFunc("/api/v1/admin/users", a.handleAdminUsers)

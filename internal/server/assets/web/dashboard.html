@@ -6,101 +6,164 @@
   <title>Apparition - 控制台</title>
   <link rel="stylesheet" href="https://cdn.staticfile.org/layui/2.9.17/css/layui.css" />
   <style>
-    body { margin: 0; background: #f6f8fc; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
-    .container { max-width: 1100px; margin: 24px auto; padding: 0 14px; }
-    .card { background: #fff; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); padding: 16px; margin-bottom: 16px; }
-    .qr { width: 220px; height: 220px; border: 1px dashed #c6cfdd; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: #f8fbff; }
-    .qr img { max-width: 100%; max-height: 100%; }
-    .label { color: #56637a; font-size: 13px; margin-top: 8px; }
+    body { margin: 0; background: #f2f5fa; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+    .container { max-width: 960px; margin: 0 auto; padding: 20px 16px 40px; }
+    .card { background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 20px 24px; margin-bottom: 20px; }
+    .card h3 { margin: 0 0 16px; font-size: 17px; font-weight: 600; color: #333; border-bottom: 1px solid #f0f0f0; padding-bottom: 10px; }
+    .label { color: #666; font-size: 13px; line-height: 1.8; }
+    .info-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+    .info-badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 12px; }
+    .badge-ok { background: #e8f8e8; color: #389e0d; }
+    .badge-err { background: #fff1f0; color: #cf1322; }
+    .badge-na { background: #f5f5f5; color: #999; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-grid.full { grid-template-columns: 1fr; }
+    .qr-container { text-align: center; padding: 16px; }
+    .qr-container img { max-width: 240px; max-height: 240px; border: 1px solid #e0e0e0; border-radius: 8px; }
   </style>
 </head>
 <body>
 <div class="container">
+
   <!-- Header -->
-  <div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+  <div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
     <div>
-      <h2 style="margin:0;">用户控制台</h2>
+      <h2 style="margin:0 0 6px; font-size: 20px;">用户控制台</h2>
       <div id="userInfo" class="label">加载中...</div>
-      <div id="cookieInfo" class="label">Cookie 状态：加载中...</div>
     </div>
-    <div style="display:flex; gap:6px; flex-wrap:wrap;">
-      <button id="toAdmin" class="layui-btn layui-btn-primary layui-btn-sm">管理员后台</button>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button id="toAdmin" class="layui-btn layui-btn-primary layui-btn-sm" style="display:none;">管理后台</button>
       <button id="changePassword" class="layui-btn layui-btn-normal layui-btn-sm">修改密码</button>
-      <button id="clearCookies" class="layui-btn layui-btn-warm layui-btn-sm">删除 Cookie</button>
       <button id="logout" class="layui-btn layui-btn-danger layui-btn-sm">退出登录</button>
     </div>
   </div>
 
-  <!-- WPS QR Login -->
+  <!-- WPS Account / Cookie Status -->
   <div class="card">
-    <h3>WPS 二维码登录</h3>
-    <button id="createSession" class="layui-btn">创建登录会话</button>
-    <span id="sessionText" class="label"></span>
-    <div style="margin-top:12px; display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap;">
-      <div class="qr" id="qrBox">等待生成二维码</div>
-      <div>
-        <div id="statusText" class="label">状态：-</div>
-        <div id="tsText" class="label">时间戳：-</div>
-      </div>
+    <h3>WPS 账号 / Cookie 管理</h3>
+    <div class="info-row">
+      <span class="label">Cookie 状态：</span>
+      <span id="cookieBadge" class="info-badge badge-na">加载中</span>
+      <span id="cookieDetail" class="label"></span>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top: 12px;">
+      <button id="refreshCookie" class="layui-btn layui-btn-sm layui-btn-normal">扫码更新 Cookie</button>
+      <button id="clearCookies" class="layui-btn layui-btn-sm layui-btn-warm">删除 Cookie</button>
     </div>
   </div>
 
   <!-- Clock-in Config -->
   <div class="card">
     <h3>打卡配置</h3>
-    <div class="layui-row layui-col-space10">
-      <div class="layui-col-md6"><input id="cfgTargetUrl" class="layui-input" placeholder="target_url (表单链接)" /></div>
-      <div class="layui-col-md6"><input id="cfgInputName" class="layui-input" placeholder="input_name (学号&姓名)" /></div>
-      <div class="layui-col-md6"><input id="cfgLongitude" class="layui-input" placeholder="longitude (经度)" /></div>
-      <div class="layui-col-md6"><input id="cfgLatitude" class="layui-input" placeholder="latitude (纬度)" /></div>
-      <div class="layui-col-md12"><input id="cfgAddress" class="layui-input" placeholder="formatted_address (打卡地址)" /></div>
+    <div class="form-grid">
+      <div><label class="label">表单链接 (target_url)</label><input id="cfgTargetUrl" class="layui-input" placeholder="https://..." /></div>
+      <div><label class="label">学号姓名 (input_name)</label><input id="cfgInputName" class="layui-input" placeholder="学号&姓名" /></div>
+      <div><label class="label">经度 (longitude)</label><input id="cfgLongitude" class="layui-input" placeholder="例: 116.397" /></div>
+      <div><label class="label">纬度 (latitude)</label><input id="cfgLatitude" class="layui-input" placeholder="例: 39.908" /></div>
     </div>
-    <button id="saveProfile" class="layui-btn" style="margin-top:10px;">保存打卡配置</button>
+    <div class="form-grid full" style="margin-top:12px;">
+      <div><label class="label">打卡地址 (formatted_address)</label><input id="cfgAddress" class="layui-input" placeholder="xx省xx市xx区..." /></div>
+    </div>
+    <button id="saveProfile" class="layui-btn layui-btn-sm" style="margin-top:14px;">保存配置</button>
   </div>
 
-  <!-- Jobs -->
+  <!-- Schedule (single cron) -->
   <div class="card">
-    <h3>调度任务</h3>
-    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-      <select id="jobType" class="layui-select" style="width:160px;">
-        <option value="daily">daily (每日定时)</option>
-        <option value="fixed_interval">fixed_interval (固定间隔)</option>
-      </select>
-      <input id="jobValue" class="layui-input" style="max-width:240px;" placeholder="daily: HH:MM / interval: 秒" />
-      <button id="createJob" class="layui-btn layui-btn-normal">创建任务</button>
+    <h3>自动打卡定时任务</h3>
+    <div id="scheduleInfo" class="label" style="margin-bottom:12px;">加载中...</div>
+    <div class="form-grid">
+      <div>
+        <label class="label">Cron 表达式（6位，含秒）</label>
+        <input id="cronExpr" class="layui-input" placeholder="例: 0 30 8 * * ? (每天8:30)" />
+      </div>
+      <div style="display:flex; align-items:flex-end; gap:8px;">
+        <button id="saveSchedule" class="layui-btn layui-btn-sm layui-btn-normal">保存定时任务</button>
+        <button id="manualRun" class="layui-btn layui-btn-sm layui-btn-warm">手动执行一次</button>
+      </div>
     </div>
-    <table class="layui-table" style="margin-top:10px;">
-      <thead><tr><th>ID</th><th>类型</th><th>值</th><th>启用</th><th>下次执行</th><th>操作</th></tr></thead>
-      <tbody id="jobsBody"></tbody>
-    </table>
+    <div class="label" style="margin-top:8px; color:#999;">提示：6位 cron 格式为「秒 分 时 日 月 周」，例如 <code>0 30 8 * * ?</code> 表示每天 8:30:00 执行</div>
+  </div>
+
+  <!-- Notification Channels -->
+  <div class="card">
+    <h3>通知渠道</h3>
+    <div class="layui-tab layui-tab-brief" style="margin:0;">
+      <ul class="layui-tab-title">
+        <li class="layui-this">邮件</li>
+        <li>Gotify</li>
+        <li>Bark</li>
+      </ul>
+      <div class="layui-tab-content" style="padding:12px 0 0;">
+        <!-- Email -->
+        <div class="layui-tab-item layui-show">
+          <div class="form-grid">
+            <div><label class="label">SMTP 服务器</label><input id="nEmailHost" class="layui-input" placeholder="smtp.example.com" /></div>
+            <div><label class="label">端口</label><input id="nEmailPort" class="layui-input" placeholder="465" /></div>
+            <div><label class="label">用户名</label><input id="nEmailUser" class="layui-input" placeholder="user@example.com" /></div>
+            <div><label class="label">密码</label><input id="nEmailPass" class="layui-input" type="password" placeholder="密码" /></div>
+            <div><label class="label">发件人名称</label><input id="nEmailFromName" class="layui-input" placeholder="Apparition" /></div>
+            <div><label class="label">TLS 模式</label>
+              <select id="nEmailTLS" class="layui-input"><option value="ssl">SSL</option><option value="starttls">STARTTLS</option><option value="plain">Plain</option></select>
+            </div>
+          </div>
+          <div style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+            <label><input type="checkbox" id="nEmailEnabled" /> 启用邮件通知</label>
+            <button class="layui-btn layui-btn-sm layui-btn-normal" onclick="saveNotifyChannel('email')">保存</button>
+            <button class="layui-btn layui-btn-sm layui-btn-primary" onclick="testNotify('email')">测试</button>
+          </div>
+        </div>
+        <!-- Gotify -->
+        <div class="layui-tab-item">
+          <div class="form-grid">
+            <div><label class="label">Server URL</label><input id="nGotifyURL" class="layui-input" placeholder="https://gotify.example.com" /></div>
+            <div><label class="label">App Token</label><input id="nGotifyToken" class="layui-input" placeholder="token" /></div>
+          </div>
+          <div style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+            <label><input type="checkbox" id="nGotifyEnabled" /> 启用</label>
+            <button class="layui-btn layui-btn-sm layui-btn-normal" onclick="saveNotifyChannel('gotify')">保存</button>
+            <button class="layui-btn layui-btn-sm layui-btn-primary" onclick="testNotify('gotify')">测试</button>
+          </div>
+        </div>
+        <!-- Bark -->
+        <div class="layui-tab-item">
+          <div class="form-grid">
+            <div><label class="label">Server URL</label><input id="nBarkURL" class="layui-input" placeholder="https://api.day.app" /></div>
+            <div><label class="label">Device Key</label><input id="nBarkKey" class="layui-input" placeholder="device_key" /></div>
+          </div>
+          <div style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+            <label><input type="checkbox" id="nBarkEnabled" /> 启用</label>
+            <button class="layui-btn layui-btn-sm layui-btn-normal" onclick="saveNotifyChannel('bark')">保存</button>
+            <button class="layui-btn layui-btn-sm layui-btn-primary" onclick="testNotify('bark')">测试</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Run History -->
   <div class="card">
     <h3>执行历史</h3>
-    <table class="layui-table">
-      <thead><tr><th>ID</th><th>状态</th><th>触发</th><th>开始时间</th><th>结束时间</th><th>消息</th></tr></thead>
+    <table class="layui-table" lay-size="sm">
+      <thead><tr><th style="width:50px;">ID</th><th style="width:60px;">状态</th><th style="width:60px;">触发</th><th>开始时间</th><th>结束时间</th><th>消息</th></tr></thead>
       <tbody id="runsBody"></tbody>
     </table>
-    <div id="runsPager" style="text-align:center;"></div>
   </div>
 
   <!-- Audit Logs -->
   <div class="card">
     <h3>审计日志</h3>
-    <table class="layui-table">
+    <table class="layui-table" lay-size="sm">
       <thead><tr><th>动作</th><th>目标</th><th>摘要</th><th>时间</th></tr></thead>
       <tbody id="auditBody"></tbody>
     </table>
   </div>
+
 </div>
 
 <script src="https://cdn.staticfile.org/layui/2.9.17/layui.js"></script>
 <script>
-layui.use(["layer", "form"], function () {
+layui.use(["layer", "element", "form"], function () {
   var layer = layui.layer;
-  var currentSession = "";
-  var pollTimer = 0;
 
   function api(url, opts) {
     return fetch(url, opts || {}).then(function (res) {
@@ -111,26 +174,84 @@ layui.use(["layer", "form"], function () {
       return { ok: res.ok, data: null };
     });
   }
+  function esc(s) { if (s == null) return "-"; var d = document.createElement("div"); d.textContent = String(s); return d.innerHTML; }
+  function localTime(s) {
+    if (!s) return "-";
+    try { return new Date(s).toLocaleString("zh-CN", { hour12: false }); } catch(e) { return s; }
+  }
 
-  function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
-
-  // --- Load user info ---
+  // --- User info ---
   function loadMe() {
     api("/api/v1/auth/me").then(function (r) {
       if (!r.ok) { location.href = "/login"; return; }
       var u = r.data.data;
-      document.getElementById("userInfo").textContent = "用户: " + u.email + " | 角色: " + u.role;
-      if (u.role !== "admin") document.getElementById("toAdmin").style.display = "none";
+      document.getElementById("userInfo").textContent = "用户: " + u.email + "  |  角色: " + u.role;
+      if (u.role === "admin") document.getElementById("toAdmin").style.display = "";
       if (u.must_change_password) layer.alert("当前账号必须修改密码后继续使用", {icon: 0});
     });
   }
 
+  // --- Cookie status ---
   function loadCookieStatus() {
     api("/api/v1/cookies").then(function (r) {
       if (!r.ok) return;
-      var info = r.data.data;
-      document.getElementById("cookieInfo").textContent = "Cookie 状态: " + (info.exists ? (info.valid ? "有效" : "无效") : "未配置") + " | 数量: " + info.cookie_count;
+      var d = r.data.data;
+      var badge = document.getElementById("cookieBadge");
+      var detail = document.getElementById("cookieDetail");
+      if (!d.exists) {
+        badge.className = "info-badge badge-na"; badge.textContent = "未配置";
+        detail.textContent = "";
+      } else if (d.valid) {
+        badge.className = "info-badge badge-ok"; badge.textContent = "有效";
+        detail.textContent = "Cookie 数量: " + d.cookie_count;
+      } else {
+        badge.className = "info-badge badge-err"; badge.textContent = "无效";
+        detail.textContent = "Cookie 数量: " + d.cookie_count;
+      }
     });
+  }
+
+  // --- WPS QR Login (popup) ---
+  var currentSession = "";
+  var pollTimer = 0;
+
+  function openQRPopup() {
+    api("/api/v1/wps/sessions", { method: "POST" }).then(function (r) {
+      if (!r.ok) { layer.msg(r.data ? r.data.message : "创建会话失败"); return; }
+      currentSession = r.data.data.session_id;
+      var content = '<div class="qr-container">'
+        + '<p style="margin:0 0 12px; color:#666;">请使用 WPS 手机端扫描二维码</p>'
+        + '<div id="qrImgBox"><img src="/api/v1/wps/sessions/' + currentSession + '/qr?ts=' + Date.now() + '" alt="QR" /></div>'
+        + '<p id="qrStatus" style="margin:12px 0 0; font-size:14px; color:#333;">等待扫码...</p>'
+        + '</div>';
+      layer.open({
+        type: 1, title: "WPS 扫码登录", area: ["340px", "400px"],
+        content: content, shadeClose: false,
+        end: function() { clearInterval(pollTimer); }
+      });
+      startPoll();
+    });
+  }
+
+  function startPoll() {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(function () {
+      if (!currentSession) return;
+      api("/api/v1/wps/sessions/" + currentSession + "/status").then(function (r) {
+        if (!r.ok) return;
+        var s = r.data.data.status;
+        var el = document.getElementById("qrStatus");
+        if (el) {
+          if (s === "scanned") el.innerHTML = '<span style="color:#1890ff;">已扫码，确认中...</span>';
+          else if (s === "confirmed") el.innerHTML = '<span style="color:#52c41a;">登录成功！</span>';
+          else if (s === "failed") el.innerHTML = '<span style="color:#f5222d;">失败: ' + esc(r.data.data.message) + '</span>';
+        }
+        if (s === "confirmed" || s === "failed") {
+          clearInterval(pollTimer);
+          if (s === "confirmed") { loadCookieStatus(); setTimeout(function(){ layer.closeAll(); }, 1200); }
+        }
+      });
+    }, 2500);
   }
 
   // --- Clock-in profile ---
@@ -157,71 +278,130 @@ layui.use(["layer", "form"], function () {
       verify_cookies: "enable", timezone: "Asia/Shanghai"
     };
     api("/api/v1/clockin/profile", { method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) })
-      .then(function (r) { layer.msg(r.ok ? "配置保存成功" : (r.data && r.data.message || "保存失败")); });
+      .then(function (r) { layer.msg(r.ok ? "配置已保存" : (r.data && r.data.message || "保存失败")); });
   }
 
-  // --- Jobs ---
-  function loadJobs() {
-    api("/api/v1/clockin/jobs").then(function (r) {
+  // --- Schedule ---
+  function loadSchedule() {
+    api("/api/v1/clockin/schedule").then(function (r) {
       if (!r.ok) return;
-      var body = document.getElementById("jobsBody");
-      body.innerHTML = "";
-      (r.data.data || []).forEach(function (job) {
-        var tr = document.createElement("tr");
-        tr.innerHTML = "<td>" + job.id + "</td><td>" + esc(job.schedule_type) + "</td><td>" + esc(job.schedule_value) + "</td>"
-          + "<td>" + (job.enabled ? "是" : "否") + "</td><td>" + esc(job.next_run_at) + "</td>"
-          + "<td><button class='layui-btn layui-btn-xs run-btn' data-id='" + job.id + "'>立即执行</button>"
-          + "<button class='layui-btn layui-btn-xs layui-btn-warm toggle-btn' data-id='" + job.id + "' data-enabled='" + job.enabled + "'>"
-          + (job.enabled ? "禁用" : "启用") + "</button></td>";
-        body.appendChild(tr);
-      });
+      var info = document.getElementById("scheduleInfo");
+      if (!r.data.data) {
+        info.textContent = "尚未设置定时任务";
+        return;
+      }
+      var d = r.data.data;
+      document.getElementById("cronExpr").value = d.cron_expr || "";
+      var parts = ["状态: " + (d.enabled ? "已启用" : "已禁用")];
+      if (d.cron_expr) parts.push("表达式: " + d.cron_expr);
+      if (d.last_run_at) parts.push("上次执行: " + localTime(d.last_run_at));
+      info.textContent = parts.join("  |  ");
     });
   }
 
-  function createJob() {
-    var payload = {
-      enabled: true,
-      schedule_type: document.getElementById("jobType").value,
-      schedule_value: document.getElementById("jobValue").value.trim(),
-      retry_policy: "immediate_once"
-    };
-    api("/api/v1/clockin/jobs", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) })
-      .then(function (r) {
-        layer.msg(r.ok ? "任务创建成功" : (r.data && r.data.message || "创建失败"));
-        if (r.ok) loadJobs();
-      });
-  }
-
-  function runJob(id) {
-    api("/api/v1/clockin/jobs/" + id + "/run", { method: "POST" }).then(function (r) {
-      if (!r.ok) { layer.msg(r.data && r.data.message || "执行失败"); return; }
-      layer.msg("执行结果: " + r.data.data.status + " - " + r.data.data.message);
-      loadJobs(); loadRuns();
-    });
-  }
-
-  function toggleJob(id, currentEnabled) {
-    api("/api/v1/clockin/jobs/" + id, {
+  function saveSchedule() {
+    var cronExpr = document.getElementById("cronExpr").value.trim();
+    if (!cronExpr) { layer.msg("请输入 cron 表达式"); return; }
+    api("/api/v1/clockin/schedule", {
       method: "PUT", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ enabled: !currentEnabled })
+      body: JSON.stringify({ enabled: true, cron_expr: cronExpr })
     }).then(function (r) {
-      layer.msg(r.ok ? "操作成功" : "操作失败");
-      if (r.ok) loadJobs();
+      layer.msg(r.ok ? "定时任务已保存并启用" : (r.data && r.data.message || "保存失败"));
+      if (r.ok) loadSchedule();
     });
   }
+
+  function manualRun() {
+    layer.confirm("确定手动执行一次打卡？", function(idx) {
+      layer.close(idx);
+      var li = layer.load(2);
+      api("/api/v1/clockin/run", { method: "POST" }).then(function (r) {
+        layer.close(li);
+        if (!r.ok) { layer.msg(r.data && r.data.message || "执行失败"); return; }
+        var d = r.data.data;
+        var color = d.status === "success" ? "#52c41a" : "#f5222d";
+        layer.alert('<b style="color:' + color + ';">' + d.status + '</b><br>' + esc(d.message), {icon: d.status === "success" ? 1 : 2});
+        loadRuns(); loadSchedule();
+      });
+    });
+  }
+
+  // --- Notifications ---
+  function loadNotifyChannels() {
+    api("/api/v1/notify/channels").then(function (r) {
+      if (!r.ok || !r.data.data) return;
+      var ch = r.data.data;
+      if (ch.email) {
+        var ec = ch.email.config || {};
+        document.getElementById("nEmailHost").value = ec.smtp_host || "";
+        document.getElementById("nEmailPort").value = ec.smtp_port || "";
+        document.getElementById("nEmailUser").value = ec.username || "";
+        document.getElementById("nEmailFromName").value = ec.from_name || "";
+        document.getElementById("nEmailTLS").value = ec.tls_mode || "ssl";
+        document.getElementById("nEmailEnabled").checked = ch.email.enabled;
+      }
+      if (ch.gotify) {
+        var gc = ch.gotify.config || {};
+        document.getElementById("nGotifyURL").value = gc.server_url || "";
+        document.getElementById("nGotifyToken").value = gc.app_token || "";
+        document.getElementById("nGotifyEnabled").checked = ch.gotify.enabled;
+      }
+      if (ch.bark) {
+        var bc = ch.bark.config || {};
+        document.getElementById("nBarkURL").value = bc.server_url || "";
+        document.getElementById("nBarkKey").value = bc.device_key || "";
+        document.getElementById("nBarkEnabled").checked = ch.bark.enabled;
+      }
+    });
+  }
+
+  window.saveNotifyChannel = function(type) {
+    var payload = { channel_type: type, enabled: false, config: {} };
+    if (type === "email") {
+      payload.enabled = document.getElementById("nEmailEnabled").checked;
+      payload.config = {
+        smtp_host: document.getElementById("nEmailHost").value.trim(),
+        smtp_port: parseInt(document.getElementById("nEmailPort").value) || 465,
+        username: document.getElementById("nEmailUser").value.trim(),
+        password: document.getElementById("nEmailPass").value.trim(),
+        from_name: document.getElementById("nEmailFromName").value.trim(),
+        from_email: document.getElementById("nEmailUser").value.trim(),
+        tls_mode: document.getElementById("nEmailTLS").value
+      };
+      if (payload.config.password === "" || payload.config.password === "******") delete payload.config.password;
+    } else if (type === "gotify") {
+      payload.enabled = document.getElementById("nGotifyEnabled").checked;
+      payload.config = {
+        server_url: document.getElementById("nGotifyURL").value.trim(),
+        app_token: document.getElementById("nGotifyToken").value.trim()
+      };
+    } else if (type === "bark") {
+      payload.enabled = document.getElementById("nBarkEnabled").checked;
+      payload.config = {
+        server_url: document.getElementById("nBarkURL").value.trim(),
+        device_key: document.getElementById("nBarkKey").value.trim()
+      };
+    }
+    api("/api/v1/notify/channels", { method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) })
+      .then(function (r) { layer.msg(r.ok ? "通知渠道已保存" : (r.data && r.data.message || "保存失败")); });
+  };
+
+  window.testNotify = function(type) {
+    api("/api/v1/notify/test", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ channel_type: type }) })
+      .then(function (r) { layer.msg(r.ok ? "测试通知已发送" : (r.data && r.data.message || "发送失败")); });
+  };
 
   // --- Runs ---
   function loadRuns(page) {
     page = page || 1;
     api("/api/v1/clockin/runs?page=" + page + "&pageSize=20").then(function (r) {
       if (!r.ok) return;
-      var body = document.getElementById("runsBody");
-      body.innerHTML = "";
+      var body = document.getElementById("runsBody"); body.innerHTML = "";
       (r.data.data.items || []).forEach(function (run) {
         var tr = document.createElement("tr");
-        var statusClass = run.status === "success" ? "style='color:green'" : "style='color:red'";
-        tr.innerHTML = "<td>" + run.id + "</td><td " + statusClass + ">" + esc(run.status) + "</td><td>" + esc(run.trigger_type)
-          + "</td><td>" + esc(run.started_at) + "</td><td>" + esc(run.finished_at) + "</td><td>" + esc(run.message) + "</td>";
+        var sc = run.status === "success" ? "style='color:#52c41a;font-weight:600'" : "style='color:#f5222d;font-weight:600'";
+        tr.innerHTML = "<td>" + run.id + "</td><td " + sc + ">" + esc(run.status) + "</td><td>" + esc(run.trigger_type)
+          + "</td><td>" + localTime(run.started_at) + "</td><td>" + localTime(run.finished_at) + "</td><td>" + esc(run.message) + "</td>";
         body.appendChild(tr);
       });
     });
@@ -231,58 +411,25 @@ layui.use(["layer", "form"], function () {
   function loadAuditLogs() {
     api("/api/v1/audit/logs?page=1&pageSize=10").then(function (r) {
       if (!r.ok) return;
-      var body = document.getElementById("auditBody");
-      body.innerHTML = "";
+      var body = document.getElementById("auditBody"); body.innerHTML = "";
       (r.data.data.items || []).forEach(function (item) {
         var tr = document.createElement("tr");
-        tr.innerHTML = "<td>" + esc(item.action) + "</td><td>" + esc(item.target_type) + "</td><td>" + esc(item.summary) + "</td><td>" + esc(item.created_at) + "</td>";
+        tr.innerHTML = "<td>" + esc(item.action) + "</td><td>" + esc(item.target_type)
+          + "</td><td>" + esc(item.summary) + "</td><td>" + localTime(item.created_at) + "</td>";
         body.appendChild(tr);
       });
     });
   }
 
-  // --- WPS ---
-  function createWpsSession() {
-    api("/api/v1/wps/sessions", { method: "POST" }).then(function (r) {
-      if (!r.ok) { layer.msg(r.data ? r.data.message : "创建会话失败"); return; }
-      currentSession = r.data.data.session_id;
-      document.getElementById("sessionText").textContent = "会话ID: " + currentSession;
-      refreshQR();
-      pollStatus();
-    });
-  }
-
-  function refreshQR() {
-    if (!currentSession) return;
-    var ts = Date.now();
-    document.getElementById("tsText").textContent = "时间戳: " + ts;
-    document.getElementById("qrBox").innerHTML = '<img alt="qr" src="/api/v1/wps/sessions/' + currentSession + '/qr?ts=' + ts + '" />';
-  }
-
-  function pollStatus() {
-    clearInterval(pollTimer);
-    pollTimer = setInterval(function () {
-      api("/api/v1/wps/sessions/" + currentSession + "/status").then(function (r) {
-        if (!r.ok) return;
-        var s = r.data.data.status;
-        document.getElementById("statusText").textContent = "状态: " + s + " - " + (r.data.data.message || "");
-        if (s === "confirmed" || s === "failed") {
-          clearInterval(pollTimer);
-          if (s === "confirmed") loadCookieStatus();
-        }
-      });
-    }, 2500);
-  }
-
   // --- Actions ---
   function doChangePassword() {
-    layer.prompt({title: "请输入当前密码", formType: 1}, function(currentPwd, idx1) {
+    layer.prompt({title: "请输入当前密码", formType: 1}, function(cur, idx1) {
       layer.close(idx1);
-      layer.prompt({title: "请输入新密码（至少8位）", formType: 1}, function(newPwd, idx2) {
+      layer.prompt({title: "请输入新密码（至少8位）", formType: 1}, function(pw, idx2) {
         layer.close(idx2);
         api("/api/v1/auth/change-password", {
           method: "POST", headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({ currentPassword: currentPwd, newPassword: newPwd })
+          body: JSON.stringify({ currentPassword: cur, newPassword: pw })
         }).then(function (r) { layer.msg(r.ok ? "密码修改成功" : (r.data && r.data.message || "修改失败")); });
       });
     });
@@ -299,27 +446,23 @@ layui.use(["layer", "form"], function () {
   }
 
   // --- Event bindings ---
-  document.getElementById("createSession").addEventListener("click", createWpsSession);
-  document.getElementById("saveProfile").addEventListener("click", saveClockinProfile);
-  document.getElementById("createJob").addEventListener("click", createJob);
-  document.getElementById("changePassword").addEventListener("click", doChangePassword);
+  document.getElementById("refreshCookie").addEventListener("click", openQRPopup);
   document.getElementById("clearCookies").addEventListener("click", clearCookies);
+  document.getElementById("saveProfile").addEventListener("click", saveClockinProfile);
+  document.getElementById("saveSchedule").addEventListener("click", saveSchedule);
+  document.getElementById("manualRun").addEventListener("click", manualRun);
+  document.getElementById("changePassword").addEventListener("click", doChangePassword);
   document.getElementById("logout").addEventListener("click", function () {
     api("/api/v1/auth/logout", { method: "POST" }).then(function () { location.href = "/login"; });
   });
   document.getElementById("toAdmin").addEventListener("click", function () { location.href = "/admin"; });
 
-  document.getElementById("jobsBody").addEventListener("click", function (e) {
-    var btn = e.target;
-    if (btn.classList.contains("run-btn")) { runJob(btn.getAttribute("data-id")); }
-    if (btn.classList.contains("toggle-btn")) { toggleJob(btn.getAttribute("data-id"), btn.getAttribute("data-enabled") === "true"); }
-  });
-
   // --- Init ---
   loadMe();
   loadCookieStatus();
   loadClockinProfile();
-  loadJobs();
+  loadSchedule();
+  loadNotifyChannels();
   loadRuns();
   loadAuditLogs();
 });

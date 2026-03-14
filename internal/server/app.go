@@ -16,6 +16,7 @@ type App struct {
 	db       *sql.DB
 	http     *http.Server
 	closeLog func()
+	cron     *cronScheduler
 	wpsMu    sync.RWMutex
 	wpsRuns  map[string]*wpsRuntimeSession
 }
@@ -79,9 +80,8 @@ func NewApp() (*App, error) {
 }
 
 func (a *App) Run(ctx context.Context) error {
-	schedulerStop := make(chan struct{})
-	go a.startScheduler(schedulerStop)
-	log.Printf("调度器已启动, enabled_jobs=%d", a.countEnabledJobs())
+	a.initScheduler()
+	log.Printf("调度器已启动 (robfig/cron), enabled_jobs=%d", a.countEnabledJobs())
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -91,7 +91,7 @@ func (a *App) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		close(schedulerStop)
+		a.cron.stop()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = a.http.Shutdown(shutdownCtx)
@@ -101,7 +101,7 @@ func (a *App) Run(ctx context.Context) error {
 		}
 		return nil
 	case err := <-serverErr:
-		close(schedulerStop)
+		a.cron.stop()
 		_ = a.db.Close()
 		if a.closeLog != nil {
 			a.closeLog()

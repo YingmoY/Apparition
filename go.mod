@@ -3,6 +3,7 @@ module github.com/YingmoY/Apparition
 go 1.21
 
 require (
+	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/crypto v0.23.0
 	modernc.org/sqlite v1.29.10
 )
