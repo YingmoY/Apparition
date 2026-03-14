@@ -36,14 +36,14 @@ func (a *App) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	page, pageSize, offset := parsePagination(r)
 	var total int
-	if err := a.db.QueryRow(`SELECT COUNT(1) FROM audit_logs WHERE user_id = ? OR user_id IS NULL`, user.ID).Scan(&total); err != nil {
+	if err := a.db.QueryRow(`SELECT COUNT(1) FROM audit_logs WHERE user_id = ?`, user.ID).Scan(&total); err != nil {
 		writeJSON(w, http.StatusInternalServerError, "读取日志统计失败", nil)
 		return
 	}
 	rows, err := a.db.Query(`
 		SELECT id, actor_type, action, target_type, target_id, summary, detail_json, created_at
 		FROM audit_logs
-		WHERE user_id = ? OR user_id IS NULL
+		WHERE user_id = ?
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
 	`, user.ID, pageSize, offset)

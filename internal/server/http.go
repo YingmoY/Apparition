@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -81,7 +82,8 @@ func (a *App) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &payload) {
 		return
 	}
-	user, hash, err := a.loadUserByEmail(payload.Username)
+	username := strings.TrimSpace(payload.Username)
+	user, hash, err := a.loadUserByEmail(username)
 	if err != nil || user.Role != "admin" || !verifyAdminPassword(payload.Password, hash) {
 		writeJSON(w, http.StatusUnauthorized, "用户名或密码错误", nil)
 		return
