@@ -3,27 +3,19 @@ package notify
 import (
 	"bytes"
 	"fmt"
-	"path/filepath"
-	"strings"
 	"text/template"
 
 	"github.com/YingmoY/Apparition/internal/server/assets"
 )
 
 type MailTemplateData struct {
-	AppName        string
-	Code           string
-	ExpireMinutes  int
-	RequestIP      string
-	RequestTime    string
-	UserEmail      string
-	SupportEmail   string
-	RunStatus      string
-	RunTime        string
-	ErrorMessage   string
-	ActionAdvice   string
-	Location       string
-	TargetFormName string
+	AppName       string
+	Code          string
+	ExpireMinutes int
+	RequestIP     string
+	RequestTime   string
+	UserEmail     string
+	SupportEmail  string
 }
 
 type MailContent struct {
@@ -35,42 +27,32 @@ type MailContent struct {
 func RenderMailContent(templateName string, data MailTemplateData) (MailContent, error) {
 	subject, err := renderSingleTemplate(templateName+".subject.tmpl", data)
 	if err != nil {
-		return MailContent{}, err
+		return MailContent{}, fmt.Errorf("render subject: %w", err)
 	}
-
-	textBody, err := renderSingleTemplate(templateName+".text.tmpl", data)
+	text, err := renderSingleTemplate(templateName+".text.tmpl", data)
 	if err != nil {
-		return MailContent{}, err
+		return MailContent{}, fmt.Errorf("render text: %w", err)
 	}
-
-	htmlBody, err := renderSingleTemplate(templateName+".html.tmpl", data)
+	html, err := renderSingleTemplate(templateName+".html.tmpl", data)
 	if err != nil {
-		return MailContent{}, err
+		return MailContent{}, fmt.Errorf("render html: %w", err)
 	}
-
-	return MailContent{
-		Subject:  strings.TrimSpace(subject),
-		TextBody: strings.TrimSpace(textBody),
-		HTMLBody: strings.TrimSpace(htmlBody),
-	}, nil
+	return MailContent{Subject: subject, TextBody: text, HTMLBody: html}, nil
 }
 
-func renderSingleTemplate(name string, data MailTemplateData) (string, error) {
-	path := filepath.ToSlash(filepath.Join("templates", "mail", name))
-	tplBytes, err := assets.MailTemplates.ReadFile(path)
+func renderSingleTemplate(filename string, data MailTemplateData) (string, error) {
+	path := "templates/mail/" + filename
+	content, err := assets.MailTemplates.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("读取邮件模板失败 %s: %w", name, err)
+		return "", fmt.Errorf("read template %s: %w", path, err)
 	}
-
-	tpl, err := template.New(name).Parse(string(tplBytes))
+	tmpl, err := template.New(filename).Parse(string(content))
 	if err != nil {
-		return "", fmt.Errorf("解析邮件模板失败 %s: %w", name, err)
+		return "", fmt.Errorf("parse template %s: %w", filename, err)
 	}
-
-	var output bytes.Buffer
-	if err := tpl.Execute(&output, data); err != nil {
-		return "", fmt.Errorf("渲染邮件模板失败 %s: %w", name, err)
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("execute template %s: %w", filename, err)
 	}
-
-	return output.String(), nil
+	return buf.String(), nil
 }

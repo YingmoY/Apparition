@@ -4,17 +4,58 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
-func defaultServerConfig() (ServerConfig, error) {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(defaultAdminPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return ServerConfig{}, fmt.Errorf("生成默认管理员密码哈希失败: %w", err)
-	}
+const (
+	defaultAdminUsername    = "admin"
+	defaultAdminPassword   = "admin"
+	defaultServerListenHost = "0.0.0.0"
+	defaultServerListenPort = 5680
+)
 
+type ServerConfig struct {
+	Server   ServerSection   `json:"server"`
+	Admin    AdminSection    `json:"admin"`
+	Security SecuritySection `json:"security"`
+	SMTP     SMTPSection     `json:"smtp"`
+}
+
+type ServerSection struct {
+	Host            string `json:"host"`
+	Port            int    `json:"port"`
+	ReadTimeoutSec  int    `json:"read_timeout_sec"`
+	WriteTimeoutSec int    `json:"write_timeout_sec"`
+	IdleTimeoutSec  int    `json:"idle_timeout_sec"`
+}
+
+type AdminSection struct {
+	Username           string `json:"username"`
+	PasswordHash       string `json:"password_hash"`
+	MustChangePassword bool   `json:"must_change_password"`
+}
+
+type SecuritySection struct {
+	SessionTTLHours       int `json:"session_ttl_hours"`
+	RememberMeTTLDays     int `json:"remember_me_ttl_days"`
+	LoginRateLimitPerMin  int `json:"login_rate_limit_per_minute"`
+	EmailSendLimitPerHour int `json:"email_send_limit_per_hour"`
+}
+
+type SMTPSection struct {
+	Enabled   bool   `json:"enabled"`
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	FromName  string `json:"from_name"`
+	FromEmail string `json:"from_email"`
+	TLSMode   string `json:"tls_mode"`
+}
+
+func defaultServerConfig() ServerConfig {
+	hash, _ := bcrypt.GenerateFromPassword([]byte(defaultAdminPassword), bcrypt.DefaultCost)
 	return ServerConfig{
 		Server: ServerSection{
 			Host:            defaultServerListenHost,
@@ -25,100 +66,61 @@ func defaultServerConfig() (ServerConfig, error) {
 		},
 		Admin: AdminSection{
 			Username:           defaultAdminUsername,
-			PasswordHash:       string(hashedPassword),
+			PasswordHash:       string(hash),
 			MustChangePassword: true,
 		},
 		Security: SecuritySection{
 			SessionTTLHours:       24,
 			RememberMeTTLDays:     7,
-			CSRFEnabled:           true,
 			LoginRateLimitPerMin:  10,
 			EmailSendLimitPerHour: 6,
 		},
 		SMTP: SMTPSection{
-			Enabled:   false,
-			Host:      "smtp.example.com",
-			Port:      465,
-			Username:  "",
-			Password:  "",
-			FromName:  "Apparition",
-			FromEmail: "no-reply@example.com",
-			TLSMode:   "ssl",
+			Enabled: false,
+			Port:    465,
+			TLSMode: "ssl",
 		},
-		NotifierDefaults: NotifierDefaultsSection{
-			OnClockInSuccess: true,
-			OnClockInFailed:  true,
-			OnAuthSecurity:   true,
-		},
-		GotifyGlobal: GotifyGlobalSection{
-			Enabled:         false,
-			ServerURL:       "",
-			AppToken:        "",
-			DefaultPriority: 5,
-		},
-		BarkGlobal: BarkGlobalSection{
-			Enabled:      false,
-			ServerURL:    "https://api.day.app",
-			DeviceKey:    "",
-			DefaultSound: "bell",
-			DefaultIcon:  "",
-		},
-	}, nil
+	}
 }
 
-func ensureConfigFile(configPath string) (bool, error) {
-	if _, err := os.Stat(configPath); err == nil {
+func ensureConfigFile(path string) (bool, error) {
+	if _, err := os.Stat(path); err == nil {
 		return false, nil
-	} else if !os.IsNotExist(err) {
-		return false, fmt.Errorf("检查配置文件失败: %w", err)
 	}
 
-	cfg, err := defaultServerConfig()
-	if err != nil {
-		return false, err
-	}
-
-	content, err := json.MarshalIndent(cfg, "", "  ")
+	cfg := defaultServerConfig()
+	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return false, fmt.Errorf("序列化默认配置失败: %w", err)
 	}
-
-	cleanPath := filepath.Clean(configPath)
-	if err := os.WriteFile(cleanPath, content, 0600); err != nil {
-		return false, fmt.Errorf("写入默认配置失败: %w", err)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return false, fmt.Errorf("写入配置文件失败: %w", err)
 	}
-
 	return true, nil
 }
 
-func loadServerConfig(configPath string) (ServerConfig, error) {
-	content, err := os.ReadFile(filepath.Clean(configPath))
+func loadServerConfig(path string) (ServerConfig, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return ServerConfig{}, fmt.Errorf("读取配置失败: %w", err)
+		return ServerConfig{}, fmt.Errorf("读取配置文件失败: %w", err)
 	}
-
 	var cfg ServerConfig
-	if err := json.Unmarshal(content, &cfg); err != nil {
-		return ServerConfig{}, fmt.Errorf("解析配置失败: %w", err)
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return ServerConfig{}, fmt.Errorf("解析配置文件失败: %w", err)
 	}
-
 	if cfg.Server.Host == "" {
 		cfg.Server.Host = defaultServerListenHost
 	}
-	if cfg.Server.Port <= 0 {
+	if cfg.Server.Port == 0 {
 		cfg.Server.Port = defaultServerListenPort
 	}
-
 	return cfg, nil
 }
 
-func saveServerConfig(configPath string, cfg ServerConfig) error {
-	content, err := json.MarshalIndent(cfg, "", "  ")
+func saveServerConfig(path string, cfg ServerConfig) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return fmt.Errorf("序列化配置失败: %w", err)
+		return err
 	}
-	if err := os.WriteFile(filepath.Clean(configPath), content, 0600); err != nil {
-		return fmt.Errorf("写入配置失败: %w", err)
-	}
-	return nil
+	return os.WriteFile(path, data, 0644)
 }

@@ -13,7 +13,6 @@ import (
 type App struct {
 	paths    RuntimePaths
 	cfg      ServerConfig
-	state    BootstrapState
 	db       *sql.DB
 	http     *http.Server
 	closeLog func()
@@ -29,18 +28,15 @@ func NewApp() (*App, error) {
 	if err := ensureRuntimeDirectories(paths); err != nil {
 		return nil, err
 	}
-
 	closeLog, err := configureLogging(paths.LogPath)
 	if err != nil {
 		return nil, err
 	}
 
-	firstRun, err := ensureConfigFile(paths.ConfigPath)
-	if err != nil {
+	if _, err := ensureConfigFile(paths.ConfigPath); err != nil {
 		closeLog()
 		return nil, err
 	}
-
 	cfg, err := loadServerConfig(paths.ConfigPath)
 	if err != nil {
 		closeLog()
@@ -64,14 +60,8 @@ func NewApp() (*App, error) {
 	}
 
 	app := &App{
-		paths: paths,
-		cfg:   cfg,
-		state: BootstrapState{
-			FirstRun:                firstRun,
-			AdminMustChangePassword: cfg.Admin.MustChangePassword,
-			DBReady:                 true,
-			ServerStartedAt:         time.Now().UTC(),
-		},
+		paths:    paths,
+		cfg:      cfg,
 		db:       db,
 		closeLog: closeLog,
 		wpsRuns:  make(map[string]*wpsRuntimeSession),
@@ -89,19 +79,19 @@ func NewApp() (*App, error) {
 }
 
 func (a *App) Run(ctx context.Context) error {
-	serverErrCh := make(chan error, 1)
-	schedulerStopCh := make(chan struct{})
-	go a.startScheduler(schedulerStopCh)
+	schedulerStop := make(chan struct{})
+	go a.startScheduler(schedulerStop)
 	log.Printf("调度器已启动, enabled_jobs=%d", a.countEnabledJobs())
 
+	serverErr := make(chan error, 1)
 	go func() {
 		log.Printf("Apparition server 正在监听 %s", a.http.Addr)
-		serverErrCh <- a.http.ListenAndServe()
+		serverErr <- a.http.ListenAndServe()
 	}()
 
 	select {
 	case <-ctx.Done():
-		close(schedulerStopCh)
+		close(schedulerStop)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = a.http.Shutdown(shutdownCtx)
@@ -110,8 +100,8 @@ func (a *App) Run(ctx context.Context) error {
 			a.closeLog()
 		}
 		return nil
-	case err := <-serverErrCh:
-		close(schedulerStopCh)
+	case err := <-serverErr:
+		close(schedulerStop)
 		_ = a.db.Close()
 		if a.closeLog != nil {
 			a.closeLog()

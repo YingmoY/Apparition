@@ -15,103 +15,77 @@
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <h2 style="margin:0;">用户控制台</h2>
-        <div id="userInfo" class="label">加载中...</div>
-		<div id="cookieInfo" class="label">Cookie 状态：加载中...</div>
-      </div>
-      <div>
-        <button id="toAdmin" class="layui-btn layui-btn-primary">管理员后台</button>
-		<button id="changePassword" class="layui-btn layui-btn-normal">修改密码</button>
-		<button id="clearCookies" class="layui-btn layui-btn-warm">删除 Cookie</button>
-        <button id="logout" class="layui-btn layui-btn-danger">退出登录</button>
-      </div>
+<div class="container">
+  <!-- Header -->
+  <div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+    <div>
+      <h2 style="margin:0;">用户控制台</h2>
+      <div id="userInfo" class="label">加载中...</div>
+      <div id="cookieInfo" class="label">Cookie 状态：加载中...</div>
     </div>
-
-    <div class="card">
-      <h3>WPS 二维码登录</h3>
-      <button id="createSession" class="layui-btn">创建登录会话</button>
-      <span id="sessionText" class="label"></span>
-      <div style="margin-top:12px; display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap;">
-        <div class="qr" id="qrBox">等待生成二维码</div>
-        <div>
-          <div id="statusText" class="label">状态：-</div>
-          <div id="tsText" class="label">时间戳：-</div>
-        </div>
-      </div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+      <button id="toAdmin" class="layui-btn layui-btn-primary layui-btn-sm">管理员后台</button>
+      <button id="changePassword" class="layui-btn layui-btn-normal layui-btn-sm">修改密码</button>
+      <button id="clearCookies" class="layui-btn layui-btn-warm layui-btn-sm">删除 Cookie</button>
+      <button id="logout" class="layui-btn layui-btn-danger layui-btn-sm">退出登录</button>
     </div>
+  </div>
 
-    <div class="card">
-      <h3>通知渠道</h3>
-      <div class="layui-row layui-col-space16">
-        <div class="layui-col-md4">
-          <input id="emailTo" class="layui-input" placeholder="邮箱通知收件人" />
-          <button id="saveEmail" class="layui-btn layui-btn-fluid" style="margin-top:8px;">保存 Email 渠道</button>
-        </div>
-        <div class="layui-col-md4">
-          <input id="gotifyUrl" class="layui-input" placeholder="Gotify URL" />
-          <input id="gotifyToken" class="layui-input" placeholder="Gotify Token" style="margin-top:8px;" />
-          <button id="saveGotify" class="layui-btn layui-btn-normal layui-btn-fluid" style="margin-top:8px;">保存 Gotify</button>
-        </div>
-        <div class="layui-col-md4">
-          <input id="barkUrl" class="layui-input" placeholder="Bark URL" />
-          <input id="barkKey" class="layui-input" placeholder="Bark Device Key" style="margin-top:8px;" />
-          <button id="saveBark" class="layui-btn layui-btn-warm layui-btn-fluid" style="margin-top:8px;">保存 Bark</button>
-        </div>
-      </div>
-      <div style="margin-top:12px;">
-        <button id="testEmail" class="layui-btn layui-btn-primary">测试 Email</button>
-        <button id="testGotify" class="layui-btn layui-btn-primary">测试 Gotify</button>
-        <button id="testBark" class="layui-btn layui-btn-primary">测试 Bark</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>打卡配置</h3>
-      <div class="layui-row layui-col-space10">
-        <div class="layui-col-md6"><input id="cfgTargetUrl" class="layui-input" placeholder="target_url" /></div>
-        <div class="layui-col-md6"><input id="cfgInputName" class="layui-input" placeholder="input_name" /></div>
-        <div class="layui-col-md6"><input id="cfgLongitude" class="layui-input" placeholder="longitude" /></div>
-        <div class="layui-col-md6"><input id="cfgLatitude" class="layui-input" placeholder="latitude" /></div>
-        <div class="layui-col-md12"><input id="cfgAddress" class="layui-input" placeholder="formatted_address" /></div>
-      </div>
-      <button id="saveProfile" class="layui-btn" style="margin-top:10px;">保存打卡配置</button>
-    </div>
-
-    <div class="card">
-      <h3>调度任务</h3>
-      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <select id="jobType" class="layui-select">
-          <option value="daily">daily</option>
-          <option value="fixed_interval">fixed_interval</option>
-        </select>
-        <input id="jobValue" class="layui-input" style="max-width: 240px;" placeholder="daily: HH:MM / interval: 秒" />
-        <button id="createJob" class="layui-btn layui-btn-normal">创建任务</button>
-      </div>
-      <table class="layui-table" style="margin-top:10px;">
-        <thead><tr><th>ID</th><th>类型</th><th>值</th><th>下次执行</th><th>操作</th></tr></thead>
-        <tbody id="jobsBody"></tbody>
-      </table>
-    </div>
-
-    <div class="card">
-      <h3>执行历史</h3>
-      <table class="layui-table" style="margin-top:10px;">
-        <thead><tr><th>ID</th><th>状态</th><th>触发方式</th><th>开始时间</th><th>结束时间</th><th>消息</th></tr></thead>
-        <tbody id="runsBody"></tbody>
-      </table>
-    </div>
-
+  <!-- WPS QR Login -->
   <div class="card">
-    <h3>通知历史</h3>
-    <table class="layui-table">
-      <thead><tr><th>类型</th><th>标题</th><th>级别</th><th>时间</th></tr></thead>
-      <tbody id="notifyEventsBody"></tbody>
+    <h3>WPS 二维码登录</h3>
+    <button id="createSession" class="layui-btn">创建登录会话</button>
+    <span id="sessionText" class="label"></span>
+    <div style="margin-top:12px; display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap;">
+      <div class="qr" id="qrBox">等待生成二维码</div>
+      <div>
+        <div id="statusText" class="label">状态：-</div>
+        <div id="tsText" class="label">时间戳：-</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clock-in Config -->
+  <div class="card">
+    <h3>打卡配置</h3>
+    <div class="layui-row layui-col-space10">
+      <div class="layui-col-md6"><input id="cfgTargetUrl" class="layui-input" placeholder="target_url (表单链接)" /></div>
+      <div class="layui-col-md6"><input id="cfgInputName" class="layui-input" placeholder="input_name (学号&姓名)" /></div>
+      <div class="layui-col-md6"><input id="cfgLongitude" class="layui-input" placeholder="longitude (经度)" /></div>
+      <div class="layui-col-md6"><input id="cfgLatitude" class="layui-input" placeholder="latitude (纬度)" /></div>
+      <div class="layui-col-md12"><input id="cfgAddress" class="layui-input" placeholder="formatted_address (打卡地址)" /></div>
+    </div>
+    <button id="saveProfile" class="layui-btn" style="margin-top:10px;">保存打卡配置</button>
+  </div>
+
+  <!-- Jobs -->
+  <div class="card">
+    <h3>调度任务</h3>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <select id="jobType" class="layui-select" style="width:160px;">
+        <option value="daily">daily (每日定时)</option>
+        <option value="fixed_interval">fixed_interval (固定间隔)</option>
+      </select>
+      <input id="jobValue" class="layui-input" style="max-width:240px;" placeholder="daily: HH:MM / interval: 秒" />
+      <button id="createJob" class="layui-btn layui-btn-normal">创建任务</button>
+    </div>
+    <table class="layui-table" style="margin-top:10px;">
+      <thead><tr><th>ID</th><th>类型</th><th>值</th><th>启用</th><th>下次执行</th><th>操作</th></tr></thead>
+      <tbody id="jobsBody"></tbody>
     </table>
   </div>
 
+  <!-- Run History -->
+  <div class="card">
+    <h3>执行历史</h3>
+    <table class="layui-table">
+      <thead><tr><th>ID</th><th>状态</th><th>触发</th><th>开始时间</th><th>结束时间</th><th>消息</th></tr></thead>
+      <tbody id="runsBody"></tbody>
+    </table>
+    <div id="runsPager" style="text-align:center;"></div>
+  </div>
+
+  <!-- Audit Logs -->
   <div class="card">
     <h3>审计日志</h3>
     <table class="layui-table">
@@ -119,337 +93,236 @@
       <tbody id="auditBody"></tbody>
     </table>
   </div>
-  </div>
+</div>
 
-  <script src="https://cdn.staticfile.org/layui/2.9.17/layui.js"></script>
-  <script>
-    layui.use(["layer"], function () {
-      const layer = layui.layer;
-      let currentSession = "";
-      let pollTimer = 0;
+<script src="https://cdn.staticfile.org/layui/2.9.17/layui.js"></script>
+<script>
+layui.use(["layer", "form"], function () {
+  var layer = layui.layer;
+  var currentSession = "";
+  var pollTimer = 0;
 
-      async function api(url, options) {
-        const res = await fetch(url, options || {});
-        if (res.headers.get("content-type") && res.headers.get("content-type").includes("application/json")) {
-          const data = await res.json();
-          return { res, data };
-        }
-        return { res, data: null };
+  function api(url, opts) {
+    return fetch(url, opts || {}).then(function (res) {
+      var ct = res.headers.get("content-type") || "";
+      if (ct.indexOf("application/json") >= 0) {
+        return res.json().then(function (d) { return { ok: res.ok, data: d }; });
       }
-
-      async function loadMe() {
-        const { res, data } = await api("/api/v1/auth/me");
-        if (!res.ok) {
-          location.href = "/login";
-          return;
-        }
-        document.getElementById("userInfo").textContent = "用户: " + data.data.email + " | 角色: " + data.data.role;
-        if (data.data.must_change_password) {
-          layer.alert("当前账号必须修改密码后继续使用", {icon: 0});
-        }
-      }
-
-      async function loadCookieStatus() {
-        const { res, data } = await api("/api/v1/cookies");
-        if (!res.ok) {
-          return;
-        }
-        const info = data.data;
-        document.getElementById("cookieInfo").textContent = "Cookie 状态: " + (info.exists ? (info.valid ? "有效" : "无效") : "未配置") + " | 数量: " + info.cookie_count;
-      }
-
-      async function loadNotifyChannels() {
-        const { res, data } = await api("/api/v1/notify/channels");
-        if (!res.ok) {
-          return;
-        }
-        const cfg = data.data || {};
-        if (cfg.email && cfg.email.config && cfg.email.config.to_email) {
-          document.getElementById("emailTo").value = cfg.email.config.to_email;
-        }
-        if (cfg.gotify && cfg.gotify.config) {
-          document.getElementById("gotifyUrl").value = cfg.gotify.config.server_url || "";
-          document.getElementById("gotifyToken").value = cfg.gotify.config.app_token || "";
-        }
-        if (cfg.bark && cfg.bark.config) {
-          document.getElementById("barkUrl").value = cfg.bark.config.server_url || "";
-          document.getElementById("barkKey").value = cfg.bark.config.device_key || "";
-        }
-      }
-
-      async function loadClockinProfile() {
-        const { res, data } = await api("/api/v1/clockin/profile");
-        if (!res.ok || !data.data) {
-          return;
-        }
-        document.getElementById("cfgTargetUrl").value = data.data.target_url || "";
-        document.getElementById("cfgInputName").value = data.data.input_name || "";
-        document.getElementById("cfgLongitude").value = data.data.longitude || "";
-        document.getElementById("cfgLatitude").value = data.data.latitude || "";
-        document.getElementById("cfgAddress").value = data.data.formatted_address || "";
-      }
-
-      async function saveClockinProfile() {
-        const payload = {
-          target_url: document.getElementById("cfgTargetUrl").value.trim(),
-          input_name: document.getElementById("cfgInputName").value.trim(),
-          longitude: Number(document.getElementById("cfgLongitude").value || "0"),
-          latitude: Number(document.getElementById("cfgLatitude").value || "0"),
-          formatted_address: document.getElementById("cfgAddress").value.trim(),
-          user_agent: navigator.userAgent,
-          locale: "zh-CN",
-          accept_language: "zh-CN,zh;q=0.9",
-          verify_cookies: "enable",
-          timezone: "Asia/Shanghai"
-        };
-        const { res, data } = await api("/api/v1/clockin/profile", {
-          method: "PUT",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) {
-          layer.msg((data && data.message) || "保存失败");
-          return;
-        }
-        layer.msg("配置保存成功");
-      }
-
-      async function loadJobs() {
-        const { res, data } = await api("/api/v1/clockin/jobs");
-        if (!res.ok) {
-          return;
-        }
-        const body = document.getElementById("jobsBody");
-        body.innerHTML = "";
-        (data.data || []).forEach(function(job) {
-          const tr = document.createElement("tr");
-          tr.innerHTML = "<td>" + job.id + "</td>" +
-                         "<td>" + job.schedule_type + "</td>" +
-                         "<td>" + job.schedule_value + "</td>" +
-                         "<td>" + job.next_run_at + "</td>" +
-                         "<td><button class='layui-btn layui-btn-xs' data-id='" + job.id + "'>立即执行</button></td>";
-          body.appendChild(tr);
-        });
-      }
-
-      async function createJob() {
-        const payload = {
-          enabled: true,
-          schedule_type: document.getElementById("jobType").value,
-          schedule_value: document.getElementById("jobValue").value.trim(),
-          retry_policy: "immediate_once"
-        };
-        const { res, data } = await api("/api/v1/clockin/jobs", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) {
-          layer.msg((data && data.message) || "创建失败");
-          return;
-        }
-        layer.msg("任务创建成功");
-        loadJobs();
-      }
-
-      async function runJob(id) {
-        const { res, data } = await api("/api/v1/clockin/jobs/" + id + "/run", { method: "POST" });
-        if (!res.ok) {
-          layer.msg((data && data.message) || "执行失败");
-          return;
-        }
-        layer.msg("执行结果: " + data.data.status + " - " + data.data.message);
-        loadJobs();
-        loadRuns();
-        loadNotifyEvents();
-      }
-
-      async function loadRuns() {
-        const { res, data } = await api("/api/v1/clockin/runs?page=1&pageSize=20");
-        if (!res.ok) {
-          return;
-        }
-        const body = document.getElementById("runsBody");
-        body.innerHTML = "";
-        (data.data.items || []).forEach(function (run) {
-          const tr = document.createElement("tr");
-          tr.innerHTML = "<td>" + run.id + "</td>" +
-                         "<td>" + run.status + "</td>" +
-                         "<td>" + run.trigger_type + "</td>" +
-                         "<td>" + run.started_at + "</td>" +
-                         "<td>" + run.finished_at + "</td>" +
-                         "<td>" + run.message + "</td>";
-          body.appendChild(tr);
-        });
-      }
-
-      async function loadNotifyEvents() {
-        const { res, data } = await api("/api/v1/notify/events?page=1&pageSize=10");
-        if (!res.ok) {
-          return;
-        }
-        const body = document.getElementById("notifyEventsBody");
-        body.innerHTML = "";
-        (data.data.items || []).forEach(function (event) {
-          const tr = document.createElement("tr");
-          tr.innerHTML = "<td>" + event.event_type + "</td><td>" + event.title + "</td><td>" + event.level + "</td><td>" + event.created_at + "</td>";
-          body.appendChild(tr);
-        });
-      }
-
-      async function loadAuditLogs() {
-        const { res, data } = await api("/api/v1/audit/logs?page=1&pageSize=10");
-        if (!res.ok) {
-          return;
-        }
-        const body = document.getElementById("auditBody");
-        body.innerHTML = "";
-        (data.data.items || []).forEach(function (item) {
-          const tr = document.createElement("tr");
-          tr.innerHTML = "<td>" + item.action + "</td><td>" + item.target_type + "</td><td>" + item.summary + "</td><td>" + item.created_at + "</td>";
-          body.appendChild(tr);
-        });
-      }
-
-      async function clearCookies() {
-        const { res, data } = await api("/api/v1/cookies", { method: "DELETE" });
-        if (!res.ok) {
-          layer.msg((data && data.message) || "删除失败");
-          return;
-        }
-        layer.msg("Cookie 已删除");
-        loadCookieStatus();
-      }
-
-      async function doChangePassword() {
-        const currentPassword = prompt("请输入当前密码");
-        if (!currentPassword) {
-          return;
-        }
-        const newPassword = prompt("请输入新密码（至少8位）");
-        if (!newPassword) {
-          return;
-        }
-        const { res, data } = await api("/api/v1/auth/change-password", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({ currentPassword: currentPassword, newPassword: newPassword })
-        });
-        if (!res.ok) {
-          layer.msg((data && data.message) || "修改失败");
-          return;
-        }
-        layer.msg("密码修改成功");
-      }
-
-      async function putChannel(url, payload) {
-        const { res, data } = await api(url, {
-          method: "PUT",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) {
-          layer.msg(data ? data.message : "保存失败");
-          return;
-        }
-        layer.msg("保存成功");
-      }
-
-      async function testChannel(channel) {
-        const { res, data } = await api("/api/v1/notify/test", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({ channel: channel })
-        });
-        if (!res.ok) {
-          layer.msg((data && data.message) || "测试失败");
-          return;
-        }
-        layer.msg("测试消息已发送");
-      }
-
-      async function createWpsSession() {
-        const { res, data } = await api("/api/v1/wps/sessions", { method: "POST" });
-        if (!res.ok) {
-          layer.msg(data ? data.message : "创建会话失败");
-          return;
-        }
-        currentSession = data.data.session_id;
-        document.getElementById("sessionText").textContent = "会话ID: " + currentSession;
-        refreshQR();
-        pollStatus();
-      }
-
-      function refreshQR() {
-        if (!currentSession) return;
-        const ts = Date.now();
-        document.getElementById("tsText").textContent = "时间戳: " + ts;
-        document.getElementById("qrBox").innerHTML = '<img alt="qr" src="/api/v1/wps/sessions/' + currentSession + '/qr?ts=' + ts + '" />';
-      }
-
-      async function pollStatus() {
-        clearInterval(pollTimer);
-        pollTimer = setInterval(async function () {
-          const { res, data } = await api("/api/v1/wps/sessions/" + currentSession + "/status");
-          if (!res.ok) {
-            return;
-          }
-          const status = data.data.status;
-          document.getElementById("statusText").textContent = "状态: " + status + " - " + (data.data.message || "");
-          if (status === "confirmed" || status === "failed") {
-            clearInterval(pollTimer);
-          }
-        }, 2500);
-      }
-
-      document.getElementById("createSession").addEventListener("click", createWpsSession);
-      document.getElementById("saveEmail").addEventListener("click", function () {
-        putChannel("/api/v1/notify/channels/email", { enabled: true, to_email: document.getElementById("emailTo").value.trim() });
-      });
-      document.getElementById("saveGotify").addEventListener("click", function () {
-        putChannel("/api/v1/notify/channels/gotify", {
-          enabled: true,
-          server_url: document.getElementById("gotifyUrl").value.trim(),
-          app_token: document.getElementById("gotifyToken").value.trim(),
-          priority: 5
-        });
-      });
-      document.getElementById("saveBark").addEventListener("click", function () {
-        putChannel("/api/v1/notify/channels/bark", {
-          enabled: true,
-          server_url: document.getElementById("barkUrl").value.trim(),
-          device_key: document.getElementById("barkKey").value.trim(),
-          sound: "bell"
-        });
-      });
-      document.getElementById("testEmail").addEventListener("click", function () { testChannel("email"); });
-      document.getElementById("testGotify").addEventListener("click", function () { testChannel("gotify"); });
-      document.getElementById("testBark").addEventListener("click", function () { testChannel("bark"); });
-      document.getElementById("saveProfile").addEventListener("click", saveClockinProfile);
-      document.getElementById("createJob").addEventListener("click", createJob);
-      document.getElementById("changePassword").addEventListener("click", doChangePassword);
-      document.getElementById("clearCookies").addEventListener("click", clearCookies);
-      document.getElementById("jobsBody").addEventListener("click", function (e) {
-        const id = e.target && e.target.getAttribute("data-id");
-        if (id) {
-          runJob(id);
-        }
-      });
-      document.getElementById("logout").addEventListener("click", async function () {
-        await api("/api/v1/auth/logout", { method: "POST" });
-        location.href = "/login";
-      });
-      document.getElementById("toAdmin").addEventListener("click", function () { location.href = "/admin"; });
-
-      loadMe();
-      loadCookieStatus();
-      loadNotifyChannels();
-      loadClockinProfile();
-      loadJobs();
-      loadRuns();
-      loadNotifyEvents();
-      loadAuditLogs();
+      return { ok: res.ok, data: null };
     });
-  </script>
+  }
+
+  function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+  // --- Load user info ---
+  function loadMe() {
+    api("/api/v1/auth/me").then(function (r) {
+      if (!r.ok) { location.href = "/login"; return; }
+      var u = r.data.data;
+      document.getElementById("userInfo").textContent = "用户: " + u.email + " | 角色: " + u.role;
+      if (u.role !== "admin") document.getElementById("toAdmin").style.display = "none";
+      if (u.must_change_password) layer.alert("当前账号必须修改密码后继续使用", {icon: 0});
+    });
+  }
+
+  function loadCookieStatus() {
+    api("/api/v1/cookies").then(function (r) {
+      if (!r.ok) return;
+      var info = r.data.data;
+      document.getElementById("cookieInfo").textContent = "Cookie 状态: " + (info.exists ? (info.valid ? "有效" : "无效") : "未配置") + " | 数量: " + info.cookie_count;
+    });
+  }
+
+  // --- Clock-in profile ---
+  function loadClockinProfile() {
+    api("/api/v1/clockin/profile").then(function (r) {
+      if (!r.ok || !r.data.data) return;
+      var d = r.data.data;
+      document.getElementById("cfgTargetUrl").value = d.target_url || "";
+      document.getElementById("cfgInputName").value = d.input_name || "";
+      document.getElementById("cfgLongitude").value = d.longitude || "";
+      document.getElementById("cfgLatitude").value = d.latitude || "";
+      document.getElementById("cfgAddress").value = d.formatted_address || "";
+    });
+  }
+
+  function saveClockinProfile() {
+    var payload = {
+      target_url: document.getElementById("cfgTargetUrl").value.trim(),
+      input_name: document.getElementById("cfgInputName").value.trim(),
+      longitude: Number(document.getElementById("cfgLongitude").value || "0"),
+      latitude: Number(document.getElementById("cfgLatitude").value || "0"),
+      formatted_address: document.getElementById("cfgAddress").value.trim(),
+      user_agent: navigator.userAgent, locale: "zh-CN", accept_language: "zh-CN,zh;q=0.9",
+      verify_cookies: "enable", timezone: "Asia/Shanghai"
+    };
+    api("/api/v1/clockin/profile", { method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) })
+      .then(function (r) { layer.msg(r.ok ? "配置保存成功" : (r.data && r.data.message || "保存失败")); });
+  }
+
+  // --- Jobs ---
+  function loadJobs() {
+    api("/api/v1/clockin/jobs").then(function (r) {
+      if (!r.ok) return;
+      var body = document.getElementById("jobsBody");
+      body.innerHTML = "";
+      (r.data.data || []).forEach(function (job) {
+        var tr = document.createElement("tr");
+        tr.innerHTML = "<td>" + job.id + "</td><td>" + esc(job.schedule_type) + "</td><td>" + esc(job.schedule_value) + "</td>"
+          + "<td>" + (job.enabled ? "是" : "否") + "</td><td>" + esc(job.next_run_at) + "</td>"
+          + "<td><button class='layui-btn layui-btn-xs run-btn' data-id='" + job.id + "'>立即执行</button>"
+          + "<button class='layui-btn layui-btn-xs layui-btn-warm toggle-btn' data-id='" + job.id + "' data-enabled='" + job.enabled + "'>"
+          + (job.enabled ? "禁用" : "启用") + "</button></td>";
+        body.appendChild(tr);
+      });
+    });
+  }
+
+  function createJob() {
+    var payload = {
+      enabled: true,
+      schedule_type: document.getElementById("jobType").value,
+      schedule_value: document.getElementById("jobValue").value.trim(),
+      retry_policy: "immediate_once"
+    };
+    api("/api/v1/clockin/jobs", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) })
+      .then(function (r) {
+        layer.msg(r.ok ? "任务创建成功" : (r.data && r.data.message || "创建失败"));
+        if (r.ok) loadJobs();
+      });
+  }
+
+  function runJob(id) {
+    api("/api/v1/clockin/jobs/" + id + "/run", { method: "POST" }).then(function (r) {
+      if (!r.ok) { layer.msg(r.data && r.data.message || "执行失败"); return; }
+      layer.msg("执行结果: " + r.data.data.status + " - " + r.data.data.message);
+      loadJobs(); loadRuns();
+    });
+  }
+
+  function toggleJob(id, currentEnabled) {
+    api("/api/v1/clockin/jobs/" + id, {
+      method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ enabled: !currentEnabled })
+    }).then(function (r) {
+      layer.msg(r.ok ? "操作成功" : "操作失败");
+      if (r.ok) loadJobs();
+    });
+  }
+
+  // --- Runs ---
+  function loadRuns(page) {
+    page = page || 1;
+    api("/api/v1/clockin/runs?page=" + page + "&pageSize=20").then(function (r) {
+      if (!r.ok) return;
+      var body = document.getElementById("runsBody");
+      body.innerHTML = "";
+      (r.data.data.items || []).forEach(function (run) {
+        var tr = document.createElement("tr");
+        var statusClass = run.status === "success" ? "style='color:green'" : "style='color:red'";
+        tr.innerHTML = "<td>" + run.id + "</td><td " + statusClass + ">" + esc(run.status) + "</td><td>" + esc(run.trigger_type)
+          + "</td><td>" + esc(run.started_at) + "</td><td>" + esc(run.finished_at) + "</td><td>" + esc(run.message) + "</td>";
+        body.appendChild(tr);
+      });
+    });
+  }
+
+  // --- Audit ---
+  function loadAuditLogs() {
+    api("/api/v1/audit/logs?page=1&pageSize=10").then(function (r) {
+      if (!r.ok) return;
+      var body = document.getElementById("auditBody");
+      body.innerHTML = "";
+      (r.data.data.items || []).forEach(function (item) {
+        var tr = document.createElement("tr");
+        tr.innerHTML = "<td>" + esc(item.action) + "</td><td>" + esc(item.target_type) + "</td><td>" + esc(item.summary) + "</td><td>" + esc(item.created_at) + "</td>";
+        body.appendChild(tr);
+      });
+    });
+  }
+
+  // --- WPS ---
+  function createWpsSession() {
+    api("/api/v1/wps/sessions", { method: "POST" }).then(function (r) {
+      if (!r.ok) { layer.msg(r.data ? r.data.message : "创建会话失败"); return; }
+      currentSession = r.data.data.session_id;
+      document.getElementById("sessionText").textContent = "会话ID: " + currentSession;
+      refreshQR();
+      pollStatus();
+    });
+  }
+
+  function refreshQR() {
+    if (!currentSession) return;
+    var ts = Date.now();
+    document.getElementById("tsText").textContent = "时间戳: " + ts;
+    document.getElementById("qrBox").innerHTML = '<img alt="qr" src="/api/v1/wps/sessions/' + currentSession + '/qr?ts=' + ts + '" />';
+  }
+
+  function pollStatus() {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(function () {
+      api("/api/v1/wps/sessions/" + currentSession + "/status").then(function (r) {
+        if (!r.ok) return;
+        var s = r.data.data.status;
+        document.getElementById("statusText").textContent = "状态: " + s + " - " + (r.data.data.message || "");
+        if (s === "confirmed" || s === "failed") {
+          clearInterval(pollTimer);
+          if (s === "confirmed") loadCookieStatus();
+        }
+      });
+    }, 2500);
+  }
+
+  // --- Actions ---
+  function doChangePassword() {
+    layer.prompt({title: "请输入当前密码", formType: 1}, function(currentPwd, idx1) {
+      layer.close(idx1);
+      layer.prompt({title: "请输入新密码（至少8位）", formType: 1}, function(newPwd, idx2) {
+        layer.close(idx2);
+        api("/api/v1/auth/change-password", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ currentPassword: currentPwd, newPassword: newPwd })
+        }).then(function (r) { layer.msg(r.ok ? "密码修改成功" : (r.data && r.data.message || "修改失败")); });
+      });
+    });
+  }
+
+  function clearCookies() {
+    layer.confirm("确定删除所有 Cookie？", function (idx) {
+      layer.close(idx);
+      api("/api/v1/cookies", { method: "DELETE" }).then(function (r) {
+        layer.msg(r.ok ? "Cookie 已删除" : "删除失败");
+        loadCookieStatus();
+      });
+    });
+  }
+
+  // --- Event bindings ---
+  document.getElementById("createSession").addEventListener("click", createWpsSession);
+  document.getElementById("saveProfile").addEventListener("click", saveClockinProfile);
+  document.getElementById("createJob").addEventListener("click", createJob);
+  document.getElementById("changePassword").addEventListener("click", doChangePassword);
+  document.getElementById("clearCookies").addEventListener("click", clearCookies);
+  document.getElementById("logout").addEventListener("click", function () {
+    api("/api/v1/auth/logout", { method: "POST" }).then(function () { location.href = "/login"; });
+  });
+  document.getElementById("toAdmin").addEventListener("click", function () { location.href = "/admin"; });
+
+  document.getElementById("jobsBody").addEventListener("click", function (e) {
+    var btn = e.target;
+    if (btn.classList.contains("run-btn")) { runJob(btn.getAttribute("data-id")); }
+    if (btn.classList.contains("toggle-btn")) { toggleJob(btn.getAttribute("data-id"), btn.getAttribute("data-enabled") === "true"); }
+  });
+
+  // --- Init ---
+  loadMe();
+  loadCookieStatus();
+  loadClockinProfile();
+  loadJobs();
+  loadRuns();
+  loadAuditLogs();
+});
+</script>
 </body>
 </html>

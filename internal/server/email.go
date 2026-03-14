@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"mime"
 	"net"
 	"net/smtp"
 	"strings"
@@ -12,156 +13,130 @@ import (
 	"github.com/YingmoY/Apparition/internal/server/notify"
 )
 
-func (a *App) sendRegisterCodeEmail(toEmail, code string, requestTime time.Time, requestIP string) error {
-	content, err := notify.RenderMailContent("verify_register", notify.MailTemplateData{
+func (a *App) sendRegisterCodeEmail(to, code string, now time.Time, clientIP string) error {
+	if !a.cfg.SMTP.Enabled {
+		log.Printf("[DEV] 注册验证码 to=%s code=%s", to, code)
+		return nil
+	}
+	data := notify.MailTemplateData{
 		AppName:       "Apparition",
 		Code:          code,
 		ExpireMinutes: emailCodeTTLMinutes,
-		RequestIP:     requestIP,
-		RequestTime:   requestTime.Format("2006-01-02 15:04:05"),
-		UserEmail:     toEmail,
+		RequestIP:     clientIP,
+		RequestTime:   now.Format("2006-01-02 15:04:05 UTC"),
+		UserEmail:     to,
 		SupportEmail:  a.cfg.SMTP.FromEmail,
-	})
+	}
+	content, err := notify.RenderMailContent("verify_register", data)
 	if err != nil {
-		return err
+		return fmt.Errorf("render email template: %w", err)
 	}
-
-	if !a.cfg.SMTP.Enabled {
-		log.Printf("[DEV] SMTP disabled, register code for %s: %s", toEmail, code)
-		return nil
-	}
-
-	fromEmail := strings.TrimSpace(a.cfg.SMTP.FromEmail)
-	if fromEmail == "" {
-		return fmt.Errorf("smtp.from_email 未配置")
-	}
-
-	message := buildMIMEMessage(a.cfg.SMTP.FromName, fromEmail, toEmail, content.Subject, content.TextBody, content.HTMLBody)
-	return sendSMTPMail(a.cfg.SMTP, fromEmail, toEmail, message)
+	msg := buildMIMEMessage(a.cfg.SMTP.FromName, a.cfg.SMTP.FromEmail, to, content.Subject, content.TextBody, content.HTMLBody)
+	return a.sendSMTPMail(to, msg)
 }
 
-func buildMIMEMessage(fromName, fromEmail, toEmail, subject, textBody, htmlBody string) []byte {
-	boundary := "apparition-boundary"
-	headers := []string{
-		fmt.Sprintf("From: %s <%s>", fromName, fromEmail),
-		fmt.Sprintf("To: <%s>", toEmail),
-		fmt.Sprintf("Subject: %s", subject),
-		"MIME-Version: 1.0",
-		fmt.Sprintf("Content-Type: multipart/alternative; boundary=%s", boundary),
-		"",
-	}
+func buildMIMEMessage(fromName, fromEmail, to, subject, textBody, htmlBody string) []byte {
+	boundary := fmt.Sprintf("----=_Part_%d", time.Now().UnixNano())
+	var b strings.Builder
 
-	body := []string{
-		fmt.Sprintf("--%s", boundary),
-		"Content-Type: text/plain; charset=UTF-8",
-		"Content-Transfer-Encoding: 8bit",
-		"",
-		textBody,
-		fmt.Sprintf("--%s", boundary),
-		"Content-Type: text/html; charset=UTF-8",
-		"Content-Transfer-Encoding: 8bit",
-		"",
-		htmlBody,
-		fmt.Sprintf("--%s--", boundary),
-		"",
-	}
+	b.WriteString(fmt.Sprintf("From: %s\r\n", mime.QEncoding.Encode("utf-8", fromName)+" <"+fromEmail+">"))
+	b.WriteString(fmt.Sprintf("To: %s\r\n", to))
+	b.WriteString(fmt.Sprintf("Subject: %s\r\n", mime.QEncoding.Encode("utf-8", subject)))
+	b.WriteString("MIME-Version: 1.0\r\n")
+	b.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n", boundary))
+	b.WriteString("\r\n")
 
-	return []byte(strings.Join(append(headers, body...), "\r\n"))
+	b.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+	b.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+	b.WriteString(textBody)
+	b.WriteString("\r\n")
+
+	b.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+	b.WriteString("Content-Type: text/html; charset=utf-8\r\n")
+	b.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+	b.WriteString(htmlBody)
+	b.WriteString("\r\n")
+
+	b.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
+	return []byte(b.String())
 }
 
-func sendSMTPMail(cfg SMTPSection, fromEmail, toEmail string, message []byte) error {
-	host := strings.TrimSpace(cfg.Host)
-	if host == "" || cfg.Port <= 0 {
-		return fmt.Errorf("smtp.host 或 smtp.port 配置无效")
-	}
+func (a *App) sendSMTPMail(to string, msg []byte) error {
+	cfg := a.cfg.SMTP
+	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
-	addr := fmt.Sprintf("%s:%d", host, cfg.Port)
-	auth := smtp.PlainAuth("", cfg.Username, cfg.Password, host)
-	mode := strings.ToLower(strings.TrimSpace(cfg.TLSMode))
-
-	switch mode {
-	case "ssl":
-		return sendSMTPOverTLS(addr, host, auth, fromEmail, toEmail, message)
+	switch strings.ToLower(cfg.TLSMode) {
+	case "ssl", "tls":
+		return sendSMTPOverTLS(addr, cfg.Host, cfg.Username, cfg.Password, cfg.FromEmail, to, msg)
 	case "starttls":
-		return sendSMTPWithSTARTTLS(addr, host, auth, fromEmail, toEmail, message)
+		return sendSMTPWithSTARTTLS(addr, cfg.Host, cfg.Username, cfg.Password, cfg.FromEmail, to, msg)
 	default:
-		return smtp.SendMail(addr, auth, fromEmail, []string{toEmail}, message)
+		auth := smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
+		return smtp.SendMail(addr, auth, cfg.FromEmail, []string{to}, msg)
 	}
 }
 
-func sendSMTPOverTLS(addr, host string, auth smtp.Auth, fromEmail, toEmail string, message []byte) error {
-	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host})
+func sendSMTPOverTLS(addr, host, user, pass, from, to string, msg []byte) error {
+	tlsCfg := &tls.Config{ServerName: host}
+	conn, err := tls.Dial("tcp", addr, tlsCfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("TLS dial: %w", err)
 	}
-	defer conn.Close()
-
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
-		return err
+		return fmt.Errorf("smtp client: %w", err)
 	}
 	defer client.Close()
 
-	if err := client.Auth(auth); err != nil {
+	if err := client.Auth(smtp.PlainAuth("", user, pass, host)); err != nil {
+		return fmt.Errorf("smtp auth: %w", err)
+	}
+	if err := client.Mail(from); err != nil {
 		return err
 	}
-	if err := client.Mail(fromEmail); err != nil {
+	if err := client.Rcpt(to); err != nil {
 		return err
 	}
-	if err := client.Rcpt(toEmail); err != nil {
-		return err
-	}
-	writer, err := client.Data()
+	w, err := client.Data()
 	if err != nil {
 		return err
 	}
-	if _, err := writer.Write(message); err != nil {
-		_ = writer.Close()
+	if _, err := w.Write(msg); err != nil {
 		return err
 	}
-	if err := writer.Close(); err != nil {
-		return err
-	}
-	return client.Quit()
+	return w.Close()
 }
 
-func sendSMTPWithSTARTTLS(addr, host string, auth smtp.Auth, fromEmail, toEmail string, message []byte) error {
-	conn, err := net.Dial("tcp", addr)
+func sendSMTPWithSTARTTLS(addr, host, user, pass, from, to string, msg []byte) error {
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
-		return err
+		return fmt.Errorf("dial: %w", err)
 	}
-	defer conn.Close()
-
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
-		return err
+		return fmt.Errorf("smtp client: %w", err)
 	}
 	defer client.Close()
 
-	if ok, _ := client.Extension("STARTTLS"); ok {
-		if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
-			return err
-		}
+	if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
+		return fmt.Errorf("starttls: %w", err)
 	}
-	if err := client.Auth(auth); err != nil {
+	if err := client.Auth(smtp.PlainAuth("", user, pass, host)); err != nil {
+		return fmt.Errorf("smtp auth: %w", err)
+	}
+	if err := client.Mail(from); err != nil {
 		return err
 	}
-	if err := client.Mail(fromEmail); err != nil {
+	if err := client.Rcpt(to); err != nil {
 		return err
 	}
-	if err := client.Rcpt(toEmail); err != nil {
-		return err
-	}
-	writer, err := client.Data()
+	w, err := client.Data()
 	if err != nil {
 		return err
 	}
-	if _, err := writer.Write(message); err != nil {
-		_ = writer.Close()
+	if _, err := w.Write(msg); err != nil {
 		return err
 	}
-	if err := writer.Close(); err != nil {
-		return err
-	}
-	return client.Quit()
+	return w.Close()
 }

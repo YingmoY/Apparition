@@ -14,7 +14,6 @@ func (a *App) handlePageRoutes(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, "not found", nil)
 		return
 	}
-
 	switch r.URL.Path {
 	case "/":
 		a.handleRootPage(w, r)
@@ -32,8 +31,7 @@ func (a *App) handlePageRoutes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleRootPage(w http.ResponseWriter, r *http.Request) {
-	_, _, err := a.currentUserFromRequest(r)
-	if err != nil {
+	if _, _, err := a.currentUserFromRequest(r); err != nil {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
@@ -62,14 +60,12 @@ func (a *App) handleAdminPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) renderPage(w http.ResponseWriter, pageName string) {
-	cleanName := path.Clean(pageName)
-	filePath := fmt.Sprintf("web/%s", cleanName)
+	filePath := fmt.Sprintf("web/%s", path.Clean(pageName))
 	content, err := assets.WebAssets.ReadFile(filePath)
 	if err != nil {
 		http.Error(w, "page not found", http.StatusNotFound)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(content)
 }

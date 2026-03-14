@@ -9,7 +9,6 @@ import (
 func (a *App) startScheduler(stop <-chan struct{}) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-stop:
@@ -22,13 +21,9 @@ func (a *App) startScheduler(stop <-chan struct{}) {
 
 func (a *App) dispatchDueJobs() {
 	now := time.Now().UTC()
-	rows, err := a.db.Query(`
-		SELECT id, user_id, schedule_type, schedule_value
-		FROM clockin_jobs
-		WHERE enabled = 1 AND next_run_at <= ?
-		ORDER BY next_run_at ASC
-		LIMIT 20
-	`, now)
+	rows, err := a.db.Query(`SELECT id, user_id, schedule_type, schedule_value
+		FROM clockin_jobs WHERE enabled = 1 AND next_run_at <= ?
+		ORDER BY next_run_at ASC LIMIT 20`, now)
 	if err != nil {
 		log.Printf("调度器查询任务失败: %v", err)
 		return
@@ -36,20 +31,17 @@ func (a *App) dispatchDueJobs() {
 	defer rows.Close()
 
 	type dueJob struct {
-		ID            int64
-		UserID        int64
-		ScheduleType  string
-		ScheduleValue string
+		ID, UserID                int64
+		ScheduleType, ScheduleValue string
 	}
-
-	jobs := make([]dueJob, 0)
+	var jobs []dueJob
 	for rows.Next() {
-		var job dueJob
-		if err := rows.Scan(&job.ID, &job.UserID, &job.ScheduleType, &job.ScheduleValue); err != nil {
+		var j dueJob
+		if err := rows.Scan(&j.ID, &j.UserID, &j.ScheduleType, &j.ScheduleValue); err != nil {
 			log.Printf("调度器读取任务失败: %v", err)
 			return
 		}
-		jobs = append(jobs, job)
+		jobs = append(jobs, j)
 	}
 
 	for _, job := range jobs {
@@ -60,11 +52,8 @@ func (a *App) dispatchDueJobs() {
 		}
 
 		runID, status, message := a.executeClockinRun(job.UserID, &job.ID, "scheduler")
-		_, err = a.db.Exec(`
-			UPDATE clockin_jobs
-			SET last_run_at = ?, next_run_at = ?, updated_at = ?
-			WHERE id = ?
-		`, time.Now().UTC(), nextRun.UTC(), time.Now().UTC(), job.ID)
+		_, err = a.db.Exec(`UPDATE clockin_jobs SET last_run_at = ?, next_run_at = ?, updated_at = ? WHERE id = ?`,
+			time.Now().UTC(), nextRun.UTC(), time.Now().UTC(), job.ID)
 		if err != nil {
 			log.Printf("更新任务状态失败 job=%d: %v", job.ID, err)
 		}

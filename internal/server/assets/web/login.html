@@ -6,33 +6,10 @@
   <title>Apparition - 登录</title>
   <link rel="stylesheet" href="https://cdn.staticfile.org/layui/2.9.17/css/layui.css" />
   <style>
-    body {
-      min-height: 100vh;
-      margin: 0;
-      background: radial-gradient(circle at 20% 20%, #f4f8ff, #e8f0ff 45%, #dfe9f7 100%);
-      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .card {
-      width: 360px;
-      background: rgba(255, 255, 255, 0.95);
-      border-radius: 16px;
-      box-shadow: 0 16px 40px rgba(43, 70, 130, 0.18);
-      padding: 26px;
-    }
-    .title {
-      margin: 0 0 18px;
-      font-size: 24px;
-      font-weight: 700;
-      color: #213b66;
-    }
-    .helper {
-      margin-top: 12px;
-      color: #4f5f77;
-      text-align: right;
-    }
+    body { min-height: 100vh; margin: 0; background: radial-gradient(circle at 20% 20%, #f4f8ff, #e8f0ff 45%, #dfe9f7 100%); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; display: flex; align-items: center; justify-content: center; }
+    .card { width: 360px; background: rgba(255,255,255,0.95); border-radius: 16px; box-shadow: 0 16px 40px rgba(43,70,130,0.18); padding: 26px; }
+    .title { margin: 0 0 18px; font-size: 24px; font-weight: 700; color: #213b66; }
+    .helper { margin-top: 12px; color: #4f5f77; text-align: right; }
   </style>
 </head>
 <body>
@@ -49,35 +26,23 @@
         <input type="checkbox" name="rememberMe" title="7天免登录" />
       </div>
       <button class="layui-btn layui-btn-fluid" lay-submit lay-filter="submitLogin">登录</button>
-      <div class="helper">
-        没有账号？<a href="/register">去注册</a>
-      </div>
+      <div class="helper">没有账号？<a href="/register">去注册</a></div>
     </div>
   </div>
-
   <script src="https://cdn.staticfile.org/layui/2.9.17/layui.js"></script>
   <script>
     layui.use(["form", "layer"], function () {
-      const form = layui.form;
-      const layer = layui.layer;
-
-      form.on("submit(submitLogin)", async function (obj) {
-        const payload = {
-          email: obj.field.email,
-          password: obj.field.password,
-          rememberMe: !!obj.field.rememberMe
-        };
-        const res = await fetch("/api/v1/auth/login", {
+      var form = layui.form, layer = layui.layer;
+      form.on("submit(submitLogin)", function (obj) {
+        fetch("/api/v1/auth/login", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          layer.msg(data.message || "登录失败");
-          return false;
-        }
-        location.href = "/dashboard";
+          body: JSON.stringify({ email: obj.field.email, password: obj.field.password, rememberMe: !!obj.field.rememberMe })
+        }).then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
+          .then(function (r) {
+            if (!r.ok) { layer.msg(r.data.message || "登录失败"); return; }
+            location.href = "/dashboard";
+          });
         return false;
       });
     });
