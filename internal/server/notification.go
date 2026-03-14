@@ -163,18 +163,31 @@ func (a *App) sendUserNotifications(userID int64, eventType, title, body string)
 		log.Printf("查询用户通知渠道失败 user=%d: %v", userID, err)
 		return
 	}
-	defer rows.Close()
 
+	// Collect all channels first, then close rows to release the DB connection
+	// before doing slow network I/O (SMTP/HTTP). With MaxOpenConns(1), holding
+	// rows open during dispatch would block all other DB operations.
+	type channelInfo struct {
+		chType       string
+		cfgJSON      string
+		notifyEvents string
+	}
+	var channels []channelInfo
 	for rows.Next() {
-		var chType, cfgJSON, notifyEvents string
-		if err := rows.Scan(&chType, &cfgJSON, &notifyEvents); err != nil {
+		var ci channelInfo
+		if err := rows.Scan(&ci.chType, &ci.cfgJSON, &ci.notifyEvents); err != nil {
 			continue
 		}
-		if !eventSubscribed(notifyEvents, eventType) {
+		channels = append(channels, ci)
+	}
+	rows.Close()
+
+	for _, ci := range channels {
+		if !eventSubscribed(ci.notifyEvents, eventType) {
 			continue
 		}
-		if err := a.dispatchNotification(chType, cfgJSON, title, body); err != nil {
-			log.Printf("发送通知失败 user=%d channel=%s event=%s: %v", userID, chType, eventType, err)
+		if err := a.dispatchNotification(ci.chType, ci.cfgJSON, title, body); err != nil {
+			log.Printf("发送通知失败 user=%d channel=%s event=%s: %v", userID, ci.chType, eventType, err)
 		}
 	}
 }

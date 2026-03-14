@@ -23,7 +23,7 @@ func (a *App) sendRegisterCodeEmail(to, code string, now time.Time, clientIP str
 		Code:          code,
 		ExpireMinutes: emailCodeTTLMinutes,
 		RequestIP:     clientIP,
-		RequestTime:   now.Format("2006-01-02 15:04:05 UTC"),
+		RequestTime:   now.In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04:05"),
 		UserEmail:     to,
 		SupportEmail:  a.cfg.SMTP.FromEmail,
 	}

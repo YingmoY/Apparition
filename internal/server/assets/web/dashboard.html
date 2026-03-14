@@ -61,10 +61,10 @@
   <div class="card">
     <h3>打卡配置</h3>
     <div class="form-grid">
-      <div><label class="label">表单链接 (target_url)</label><input id="cfgTargetUrl" class="layui-input" placeholder="https://..." /></div>
-      <div><label class="label">学号姓名 (input_name)</label><input id="cfgInputName" class="layui-input" placeholder="学号&姓名" /></div>
-      <div><label class="label">经度 (longitude)</label><input id="cfgLongitude" class="layui-input" placeholder="例: 116.397" /></div>
-      <div><label class="label">纬度 (latitude)</label><input id="cfgLatitude" class="layui-input" placeholder="例: 39.908" /></div>
+      <div><label class="label">表单链接 (target_url)</label><input id="cfgTargetUrl" class="layui-input" placeholder="https://f.wps.cn/..." /></div>
+      <div><label class="label">姓名 (input_name)</label><input id="cfgInputName" class="layui-input" placeholder="姓名" /></div>
+      <div><label class="label">经度 (longitude)</label><input id="cfgLongitude" class="layui-input" placeholder="例: 11x.xxxx" /></div>
+      <div><label class="label">纬度 (latitude)</label><input id="cfgLatitude" class="layui-input" placeholder="例: 3x.xxx" /></div>
     </div>
     <div class="form-grid full" style="margin-top:12px;">
       <div><label class="label">打卡地址 (formatted_address)</label><input id="cfgAddress" class="layui-input" placeholder="xx省xx市xx区..." /></div>
@@ -170,7 +170,7 @@
 
   <!-- Run History -->
   <div class="card">
-    <h3>执行历史</h3>
+    <h3>打卡历史</h3>
     <table class="layui-table" lay-size="sm">
       <thead><tr><th style="width:50px;">ID</th><th style="width:60px;">状态</th><th style="width:60px;">触发</th><th>开始时间</th><th>结束时间</th><th>消息</th></tr></thead>
       <tbody id="runsBody"></tbody>
@@ -179,7 +179,7 @@
 
   <!-- Audit Logs -->
   <div class="card">
-    <h3>审计日志</h3>
+    <h3>操作日志</h3>
     <table class="layui-table" lay-size="sm">
       <thead><tr><th>动作</th><th>目标</th><th>摘要</th><th>时间</th></tr></thead>
       <tbody id="auditBody"></tbody>

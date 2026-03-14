@@ -208,9 +208,10 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	a.writeAuditLog(&user.ID, "user", "login", "sessions", tokenHash, "用户登录成功", map[string]any{"ip": a.extractClientIP(r)})
 
 	// Send login notification (async)
+	loginTime := now.In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04:05")
 	go a.sendUserNotifications(user.ID, notifyEventLogin, "新设备登录通知",
 		fmt.Sprintf("您的账号 %s 于 %s 从 IP %s 登录。如非本人操作，请及时修改密码。",
-			user.Email, now.Format("2006-01-02 15:04:05"), a.extractClientIP(r)))
+			user.Email, loginTime, a.extractClientIP(r)))
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
