@@ -35,37 +35,49 @@ func (a *App) initScheduler() {
 	a.cron.start()
 }
 
+type cronJobEntry struct {
+	userID   int64
+	cronExpr string
+}
+
 func (a *App) loadAllCronJobs() {
-	a.cron.mu.Lock()
-	defer a.cron.mu.Unlock()
-
-	// Remove all existing entries
-	for _, entry := range a.cron.c.Entries() {
-		a.cron.c.Remove(entry.ID)
-	}
-
+	// First: query DB and collect all jobs (release DB conn quickly)
 	rows, err := a.db.Query(`SELECT user_id, cron_expr FROM clockin_jobs WHERE enabled = 1 AND cron_expr != ''`)
 	if err != nil {
 		log.Printf("加载定时任务失败: %v", err)
 		return
 	}
-	defer rows.Close()
-
-	count := 0
+	var jobs []cronJobEntry
 	for rows.Next() {
-		var userID int64
-		var cronExpr string
-		if err := rows.Scan(&userID, &cronExpr); err != nil {
+		var j cronJobEntry
+		if err := rows.Scan(&j.userID, &j.cronExpr); err != nil {
 			continue
 		}
-		uid := userID // capture for closure
-		_, err := a.cron.c.AddFunc(cronExpr, func() {
+		jobs = append(jobs, j)
+	}
+	rows.Close()
+
+	// Second: under lock, rebuild cron entries
+	a.cron.mu.Lock()
+	defer a.cron.mu.Unlock()
+
+	for _, entry := range a.cron.c.Entries() {
+		a.cron.c.Remove(entry.ID)
+	}
+
+	count := 0
+	for _, j := range jobs {
+		uid := j.userID
+		_, err := a.cron.c.AddFunc(j.cronExpr, func() {
 			log.Printf("cron 触发打卡任务: user=%d", uid)
-			runID, status, message := a.executeClockinRun(uid, "scheduler")
-			log.Printf("cron 任务完成: user=%d run=%d status=%s message=%s", uid, runID, status, message)
+			// Run in goroutine so concurrent cron triggers don't block each other
+			go func() {
+				runID, status, message := a.executeClockinRun(uid, "scheduler")
+				log.Printf("cron 任务完成: user=%d run=%d status=%s message=%s", uid, runID, status, message)
+			}()
 		})
 		if err != nil {
-			log.Printf("添加 cron 任务失败 user=%d expr=%s: %v", userID, cronExpr, err)
+			log.Printf("添加 cron 任务失败 user=%d expr=%s: %v", uid, j.cronExpr, err)
 			continue
 		}
 		count++
@@ -84,7 +96,6 @@ func (a *App) validateCronExpr(expr string) error {
 	if err != nil {
 		return fmt.Errorf("解析失败: %w", err)
 	}
-	// Verify it produces a reasonable next time
 	next := sched.Next(time.Now().In(loc))
 	if next.IsZero() {
 		return fmt.Errorf("无法计算下次执行时间")
