@@ -1,0 +1,55 @@
+name: Build test and Pre-release
+
+on:
+  workflow_dispatch: # 允许手动点击按钮触发发布
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - '**.md' # 忽略文档修改
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Generate Version Name
+        id: vars
+        run: echo "tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Build Matrix
+        run: |
+          # 准备输出目录
+          mkdir -p release_dist
+          
+          # 1. Linux 64-bit CLI
+          GOOS=linux GOARCH=amd64 go build -o release_dist/cli-linux-amd64 ./cmd/cli
+          # 2. Linux 64-bit Server
+          GOOS=linux GOARCH=amd64 go build -o release_dist/server-linux-amd64 ./cmd/server
+          # 3. Windows 64-bit CLI
+          GOOS=windows GOARCH=amd64 go build -o release_dist/cli-windows-amd64.exe ./cmd/cli
+          # 4. Windows 64-bit Server
+          GOOS=windows GOARCH=amd64 go build -o release_dist/server-windows-amd64.exe ./cmd/server
+
+      - name: Create Pre-release
+        # 仅在手动触发或推送到 main 时创建 Release
+        if: github.event_name == 'workflow_dispatch' 
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: Pre-release ${{ steps.vars.outputs.tag }}
+          prerelease: true
+          files: |
+            release_dist/cli-linux-amd64
+            release_dist/server-linux-amd64
+            release_dist/cli-windows-amd64.exe
+            release_dist/server-windows-amd64.exe
