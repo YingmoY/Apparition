@@ -1,5 +1,7 @@
 # Apparition
 
+[![Build test and Pre-release](https://github.com/YingmoY/Apparition/actions/workflows/build.yml/badge.svg)](https://github.com/YingmoY/Apparition/actions/workflows/build.yml)
+
 Apparition 是一个 WPS/金山文档自动打卡工具，支持 CLI 单次运行和 Web 服务端持续运行两种模式。
 
 ## 功能特性
