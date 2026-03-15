@@ -6,6 +6,9 @@
 *.dylib
 *.test
 *.out
+cli
+server
+Apparition
 
 # Logs
 *.log
