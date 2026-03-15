@@ -24,7 +24,6 @@ data/
 # Go tooling
 .coverprofile
 coverage.out
-go.sum
 
 # Editor files
 .DS_Store
