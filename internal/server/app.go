@@ -83,6 +83,9 @@ func (a *App) Run(ctx context.Context) error {
 	a.initScheduler()
 	log.Printf("调度器已启动 (robfig/cron), enabled_jobs=%d", a.countEnabledJobs())
 
+	// Recover missed cron jobs in background (does not block HTTP server startup)
+	go a.recoverMissedJobs()
+
 	serverErr := make(chan error, 1)
 	go func() {
 		log.Printf("Apparition server 正在监听 %s", a.http.Addr)
