@@ -67,6 +67,7 @@ func (a *App) router() http.Handler {
 	mux.HandleFunc("/api/v1/admin/users", a.handleAdminUsers)
 	mux.HandleFunc("/api/v1/admin/runs", a.handleAdminRuns)
 	mux.HandleFunc("/api/v1/admin/logs", a.handleAdminLogs)
+	mux.HandleFunc("/api/v1/admin/bulk-clockin", a.handleAdminBulkClockin)
 
 	// pages
 	mux.HandleFunc("/", a.handlePageRoutes)

@@ -2,6 +2,8 @@ package server
 
 import (
 	"database/sql"
+	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -129,5 +131,84 @@ func (a *App) handleAdminRuns(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, "ok", map[string]any{
 		"items": items, "total": total, "page": p.Page, "page_size": p.PageSize,
+	})
+}
+
+func (a *App) handleAdminBulkClockin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+		return
+	}
+	if err := a.requireAdmin(r); err != nil {
+		writeJSON(w, http.StatusForbidden, "无权限", nil)
+		return
+	}
+
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		loc = time.FixedZone("CST", 8*3600)
+	}
+	todayStr := time.Now().In(loc).Format("20060102")
+
+	rows, err := a.db.Query(`
+		SELECT u.id, u.email FROM users u
+		WHERE u.status = 'active'
+		AND u.id NOT IN (
+			SELECT DISTINCT user_id FROM clockin_runs
+			WHERE run_date = ? AND status = 'success'
+		)
+		ORDER BY u.id`, todayStr)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, "查询用户失败", nil)
+		return
+	}
+
+	type pendingUser struct {
+		id    int64
+		email string
+	}
+	var users []pendingUser
+	for rows.Next() {
+		var u pendingUser
+		if err := rows.Scan(&u.id, &u.email); err != nil {
+			continue
+		}
+		users = append(users, u)
+	}
+	rows.Close()
+
+	type bulkResult struct {
+		UserID  int64  `json:"user_id"`
+		Email   string `json:"email"`
+		RunID   int64  `json:"run_id"`
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+	var results []bulkResult
+	successCount, failCount := 0, 0
+
+	for _, u := range users {
+		runID, status, message := a.executeClockinRun(u.id, "admin_bulk")
+		results = append(results, bulkResult{
+			UserID: u.id, Email: u.email,
+			RunID: runID, Status: status, Message: message,
+		})
+		if status == "success" {
+			successCount++
+		} else {
+			failCount++
+		}
+		log.Printf("管理员批量打卡: user=%d email=%s status=%s", u.id, u.email, status)
+	}
+
+	a.writeAuditLog(nil, "admin", "bulk_clockin", "clockin_runs", todayStr,
+		fmt.Sprintf("批量打卡: 总计%d人, 成功%d, 失败%d", len(users), successCount, failCount), nil)
+
+	writeJSON(w, http.StatusOK, "ok", map[string]any{
+		"date":          todayStr,
+		"total":         len(users),
+		"success_count": successCount,
+		"fail_count":    failCount,
+		"results":       results,
 	})
 }
