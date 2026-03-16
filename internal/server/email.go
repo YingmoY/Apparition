@@ -72,8 +72,7 @@ func (a *App) sendSMTPMail(to string, msg []byte) error {
 	case "starttls":
 		return sendSMTPWithSTARTTLS(addr, cfg.Host, cfg.Username, cfg.Password, cfg.FromEmail, to, msg)
 	default:
-		auth := smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
-		return smtp.SendMail(addr, auth, cfg.FromEmail, []string{to}, msg)
+		return sendSMTPPlain(addr, cfg.Host, cfg.Username, cfg.Password, cfg.FromEmail, to, msg)
 	}
 }
 
@@ -84,8 +83,13 @@ func sendSMTPOverTLS(addr, host, user, pass, from, to string, msg []byte) error 
 	if err != nil {
 		return fmt.Errorf("TLS dial: %w", err)
 	}
+	// Hard deadline on the entire SMTP conversation: prevents a hanging
+	// server from blocking this goroutine (and potentially the DB pool) forever.
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
+		conn.Close()
 		return fmt.Errorf("smtp client: %w", err)
 	}
 	defer client.Close()
@@ -114,8 +118,11 @@ func sendSMTPWithSTARTTLS(addr, host, user, pass, from, to string, msg []byte) e
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
+		conn.Close()
 		return fmt.Errorf("smtp client: %w", err)
 	}
 	defer client.Close()
@@ -123,6 +130,39 @@ func sendSMTPWithSTARTTLS(addr, host, user, pass, from, to string, msg []byte) e
 	if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
 		return fmt.Errorf("starttls: %w", err)
 	}
+	if err := client.Auth(smtp.PlainAuth("", user, pass, host)); err != nil {
+		return fmt.Errorf("smtp auth: %w", err)
+	}
+	if err := client.Mail(from); err != nil {
+		return err
+	}
+	if err := client.Rcpt(to); err != nil {
+		return err
+	}
+	w, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		return err
+	}
+	return w.Close()
+}
+
+func sendSMTPPlain(addr, host, user, pass, from, to string, msg []byte) error {
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("dial: %w", err)
+	}
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("smtp client: %w", err)
+	}
+	defer client.Close()
+
 	if err := client.Auth(smtp.PlainAuth("", user, pass, host)); err != nil {
 		return fmt.Errorf("smtp auth: %w", err)
 	}

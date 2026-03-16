@@ -15,7 +15,11 @@ type cronScheduler struct {
 }
 
 func newCronScheduler() *cronScheduler {
-	loc, _ := time.LoadLocation("Asia/Shanghai")
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		log.Printf("警告: 加载 Asia/Shanghai 时区失败: %v, 使用 UTC+8 固定偏移", err)
+		loc = time.FixedZone("CST", 8*3600)
+	}
 	return &cronScheduler{
 		c: cron.New(cron.WithLocation(loc), cron.WithSeconds()),
 	}
@@ -90,7 +94,10 @@ func (a *App) reloadCron() {
 }
 
 func (a *App) validateCronExpr(expr string) error {
-	loc, _ := time.LoadLocation("Asia/Shanghai")
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		loc = time.FixedZone("CST", 8*3600)
+	}
 	parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	sched, err := parser.Parse(expr)
 	if err != nil {

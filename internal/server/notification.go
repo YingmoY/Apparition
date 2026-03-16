@@ -244,10 +244,15 @@ func (a *App) sendNotifyEmail(cfg emailNotifyConfig, subject, body string) error
 	return a.sendSMTPMail(to, msg)
 }
 
+// httpNotifyClient is a shared HTTP client with a timeout for notification calls.
+// Using http.DefaultClient (no timeout) risks hanging indefinitely on unresponsive
+// Gotify/Bark servers, which could delay cron job completion and block goroutines.
+var httpNotifyClient = &http.Client{Timeout: 15 * time.Second}
+
 func sendGotifyNotification(cfg gotifyNotifyConfig, title, body string) error {
 	url := strings.TrimRight(cfg.ServerURL, "/") + "/message?token=" + cfg.AppToken
 	payload, _ := json.Marshal(map[string]any{"title": title, "message": body, "priority": 5})
-	resp, err := http.Post(url, "application/json", strings.NewReader(string(payload)))
+	resp, err := httpNotifyClient.Post(url, "application/json", strings.NewReader(string(payload)))
 	if err != nil {
 		return err
 	}
@@ -260,7 +265,7 @@ func sendGotifyNotification(cfg gotifyNotifyConfig, title, body string) error {
 
 func sendBarkNotification(cfg barkNotifyConfig, title, body string) error {
 	url := strings.TrimRight(cfg.ServerURL, "/") + "/" + cfg.DeviceKey + "/" + title + "/" + body
-	resp, err := http.Get(url)
+	resp, err := httpNotifyClient.Get(url)
 	if err != nil {
 		return err
 	}
