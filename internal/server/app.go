@@ -11,17 +11,21 @@ import (
 )
 
 type App struct {
-	paths     RuntimePaths
-	cfg       ServerConfig
-	db        *sql.DB
-	http      *http.Server
-	closeLog  func()
-	cron      *cronScheduler
-	calibMu   sync.Mutex
-	calibWg   sync.WaitGroup
-	calibStop chan struct{}
-	wpsMu     sync.RWMutex
-	wpsRuns   map[string]*wpsRuntimeSession
+	paths      RuntimePaths
+	cfg        ServerConfig
+	db         *sql.DB
+	http       *http.Server
+	closeLog   func()
+	cron       *cronScheduler
+	schedMu    sync.Mutex
+	schedWg    sync.WaitGroup
+	schedStop  chan struct{}
+	schedQueue chan scheduledRun
+	calibMu    sync.Mutex
+	calibWg    sync.WaitGroup
+	calibStop  chan struct{}
+	wpsMu      sync.RWMutex
+	wpsRuns    map[string]*wpsRuntimeSession
 }
 
 func NewApp() (*App, error) {
@@ -99,6 +103,7 @@ func (a *App) Run(ctx context.Context) error {
 	case <-ctx.Done():
 		a.stopSchedulerCalibrationLoop()
 		a.cron.stop()
+		a.stopSchedulerRunner()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = a.http.Shutdown(shutdownCtx)
@@ -110,6 +115,7 @@ func (a *App) Run(ctx context.Context) error {
 	case err := <-serverErr:
 		a.stopSchedulerCalibrationLoop()
 		a.cron.stop()
+		a.stopSchedulerRunner()
 		_ = a.db.Close()
 		if a.closeLog != nil {
 			a.closeLog()

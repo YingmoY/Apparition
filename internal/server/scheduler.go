@@ -18,6 +18,14 @@ type cronScheduler struct {
 
 const calibrationStartupDelay = 3 * time.Second
 
+const schedulerQueueSize = 1024
+
+type scheduledRun struct {
+	userID      int64
+	triggerType string
+	scheduledAt time.Time
+}
+
 func newCronScheduler() *cronScheduler {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
@@ -39,6 +47,7 @@ func (s *cronScheduler) stop() {
 
 func (a *App) initScheduler() {
 	a.cron = newCronScheduler()
+	a.startSchedulerRunner()
 	a.loadAllCronJobs()
 	a.cron.start()
 	a.startSchedulerCalibrationLoop()
@@ -79,11 +88,7 @@ func (a *App) loadAllCronJobs() {
 		uid := j.userID
 		_, err := a.cron.c.AddFunc(j.cronExpr, func() {
 			log.Printf("cron 触发打卡任务: user=%d", uid)
-			// Run in goroutine so concurrent cron triggers don't block each other
-			go func() {
-				runID, status, message := a.executeClockinRun(uid, "scheduler")
-				log.Printf("cron 任务完成: user=%d run=%d status=%s message=%s", uid, runID, status, message)
-			}()
+			_ = a.submitScheduledRun(uid, "scheduler", time.Now())
 		})
 		if err != nil {
 			log.Printf("添加 cron 任务失败 user=%d expr=%s: %v", uid, j.cronExpr, err)
@@ -96,6 +101,85 @@ func (a *App) loadAllCronJobs() {
 
 func (a *App) reloadCron() {
 	a.loadAllCronJobs()
+}
+
+func (a *App) startSchedulerRunner() {
+	a.schedMu.Lock()
+	defer a.schedMu.Unlock()
+
+	if a.schedStop != nil {
+		return
+	}
+
+	a.schedStop = make(chan struct{})
+	a.schedQueue = make(chan scheduledRun, schedulerQueueSize)
+	a.schedWg.Add(1)
+	go func(stop <-chan struct{}, queue <-chan scheduledRun) {
+		defer a.schedWg.Done()
+		a.runSchedulerRunner(stop, queue)
+	}(a.schedStop, a.schedQueue)
+}
+
+func (a *App) stopSchedulerRunner() {
+	a.schedMu.Lock()
+	stop := a.schedStop
+	a.schedStop = nil
+	a.schedQueue = nil
+	a.schedMu.Unlock()
+
+	if stop == nil {
+		return
+	}
+	close(stop)
+	a.schedWg.Wait()
+}
+
+func (a *App) runSchedulerRunner(stop <-chan struct{}, queue <-chan scheduledRun) {
+	for {
+		select {
+		case <-stop:
+			return
+		case task := <-queue:
+			delay := time.Since(task.scheduledAt).Truncate(time.Second)
+			if delay < 0 {
+				delay = 0
+			}
+			log.Printf("调度执行器: 开始执行 user=%d trigger=%s delay=%s", task.userID, task.triggerType, delay)
+			runID, status, message := a.executeClockinRun(task.userID, task.triggerType)
+			log.Printf("调度执行器: 执行完成 user=%d run=%d status=%s message=%s", task.userID, runID, status, message)
+		}
+	}
+}
+
+func (a *App) submitScheduledRun(userID int64, triggerType string, scheduledAt time.Time) bool {
+	a.schedMu.Lock()
+	stop := a.schedStop
+	queue := a.schedQueue
+	a.schedMu.Unlock()
+
+	if stop == nil || queue == nil {
+		log.Printf("调度执行器: 未启动，跳过入队 user=%d trigger=%s", userID, triggerType)
+		return false
+	}
+
+	task := scheduledRun{userID: userID, triggerType: triggerType, scheduledAt: scheduledAt}
+
+	select {
+	case <-stop:
+		return false
+	case queue <- task:
+		return true
+	default:
+		log.Printf("调度执行器: 队列繁忙，改为后台等待入队 user=%d trigger=%s", userID, triggerType)
+		go func() {
+			select {
+			case <-stop:
+				return
+			case queue <- task:
+			}
+		}()
+		return true
+	}
 }
 
 func (a *App) startSchedulerCalibrationLoop() {
@@ -200,9 +284,8 @@ func (a *App) calibrateOnce(ctx context.Context) {
 			if a.hasRunForScheduleSlot(j.userID, scheduled, nextDue) {
 				continue
 			}
-			log.Printf("调度校准: 触发补偿执行 user=%d scheduled=%s delay=%s", j.userID, scheduled.Format("15:04:05"), now.Sub(scheduled).Truncate(time.Second))
-			runID, status, message := a.executeClockinRun(j.userID, "scheduler_calibration")
-			log.Printf("调度校准: 完成 user=%d run=%d status=%s message=%s", j.userID, runID, status, message)
+			log.Printf("调度校准: 入队补偿执行 user=%d scheduled=%s delay=%s", j.userID, scheduled.Format("15:04:05"), now.Sub(scheduled).Truncate(time.Second))
+			_ = a.submitScheduledRun(j.userID, "scheduler_calibration", scheduled)
 		}
 	}
 }
