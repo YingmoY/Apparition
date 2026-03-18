@@ -123,6 +123,7 @@ data/
     "read_timeout_sec": 15,
     "write_timeout_sec": 30,
     "idle_timeout_sec": 60,
+    "scheduler_calibration_minutes": 0,
     "real_ip_header": "",
     "help_url": ""
   },
@@ -156,6 +157,7 @@ data/
 |------|------|
 | `server.real_ip_header` | 从 CDN/反向代理获取真实客户端 IP 的 HTTP 请求头名称，留空使用默认的 X-Forwarded-For / X-Real-IP |
 | `server.help_url` | 帮助页面 URL，配置后控制台会显示「使用帮助」按钮，点击跳转到该地址 |
+| `server.scheduler_calibration_minutes` | 定时器校准间隔（分钟），`0` 表示禁用自动校准；大于 `0` 时按该间隔校准，并顺序补做错过的任务 |
 | `smtp.enabled` | 是否启用 SMTP 邮件发送（注册验证码和通知都需要） |
 | `smtp.tls_mode` | TLS 模式：`ssl`（465端口）、`starttls`（587端口）、`plain`（25端口） |
 

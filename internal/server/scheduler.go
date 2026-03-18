@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"sync"
@@ -15,11 +16,7 @@ type cronScheduler struct {
 	mu sync.Mutex
 }
 
-const (
-	calibrationInterval    = 20 * time.Second
-	calibrationLookback    = 5 * time.Minute
-	calibrationMinLateness = 15 * time.Second
-)
+const calibrationStartupDelay = 3 * time.Second
 
 func newCronScheduler() *cronScheduler {
 	loc, err := time.LoadLocation("Asia/Shanghai")
@@ -102,6 +99,12 @@ func (a *App) reloadCron() {
 }
 
 func (a *App) startSchedulerCalibrationLoop() {
+	intervalMinutes := a.cfg.Server.SchedulerCalibrationMinute
+	if intervalMinutes <= 0 {
+		log.Printf("调度校准: 已禁用 (server.scheduler_calibration_minutes=%d)", intervalMinutes)
+		return
+	}
+
 	a.calibMu.Lock()
 	defer a.calibMu.Unlock()
 
@@ -111,10 +114,10 @@ func (a *App) startSchedulerCalibrationLoop() {
 
 	a.calibStop = make(chan struct{})
 	a.calibWg.Add(1)
-	go func(stop <-chan struct{}) {
+	go func(stop <-chan struct{}, interval time.Duration) {
 		defer a.calibWg.Done()
-		a.runSchedulerCalibrationLoop(stop)
-	}(a.calibStop)
+		a.runSchedulerCalibrationLoop(stop, interval)
+	}(a.calibStop, time.Duration(intervalMinutes)*time.Minute)
 }
 
 func (a *App) stopSchedulerCalibrationLoop() {
@@ -130,12 +133,12 @@ func (a *App) stopSchedulerCalibrationLoop() {
 	a.calibWg.Wait()
 }
 
-func (a *App) runSchedulerCalibrationLoop(stop <-chan struct{}) {
-	ticker := time.NewTicker(calibrationInterval)
+func (a *App) runSchedulerCalibrationLoop(stop <-chan struct{}, interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	// Run one pass shortly after startup so a just-missed slot is recovered quickly.
-	startupTimer := time.NewTimer(3 * time.Second)
+	startupTimer := time.NewTimer(calibrationStartupDelay)
 	defer startupTimer.Stop()
 
 	for {
@@ -157,7 +160,6 @@ func (a *App) calibrateOnce(ctx context.Context) {
 	}
 
 	now := time.Now().In(loc)
-	windowStart := now.Add(-calibrationLookback)
 
 	rows, err := a.db.QueryContext(ctx, `SELECT user_id, cron_expr FROM clockin_jobs WHERE enabled = 1 AND cron_expr != ''`)
 	if err != nil {
@@ -188,51 +190,57 @@ func (a *App) calibrateOnce(ctx context.Context) {
 			continue
 		}
 
-		dueAt := lastScheduledBetween(sched, windowStart, now)
-		if dueAt.IsZero() {
-			continue
-		}
-		lateness := now.Sub(dueAt)
-		if lateness < calibrationMinLateness {
-			continue
-		}
-		if a.hasRunNearSchedule(j.userID, dueAt) {
+		missed := a.listMissedSchedules(j.userID, sched, now, loc)
+		if len(missed) == 0 {
 			continue
 		}
 
-		uid := j.userID
-		scheduled := dueAt
-		go func() {
-			log.Printf("调度校准: 触发补偿执行 user=%d scheduled=%s delay=%s", uid, scheduled.Format("15:04:05"), time.Since(scheduled).Truncate(time.Second))
-			runID, status, message := a.executeClockinRun(uid, "scheduler_calibration")
-			log.Printf("调度校准: 完成 user=%d run=%d status=%s message=%s", uid, runID, status, message)
-		}()
+		for _, scheduled := range missed {
+			nextDue := sched.Next(scheduled)
+			if a.hasRunForScheduleSlot(j.userID, scheduled, nextDue) {
+				continue
+			}
+			log.Printf("调度校准: 触发补偿执行 user=%d scheduled=%s delay=%s", j.userID, scheduled.Format("15:04:05"), now.Sub(scheduled).Truncate(time.Second))
+			runID, status, message := a.executeClockinRun(j.userID, "scheduler_calibration")
+			log.Printf("调度校准: 完成 user=%d run=%d status=%s message=%s", j.userID, runID, status, message)
+		}
 	}
 }
 
-func lastScheduledBetween(sched cron.Schedule, start, end time.Time) time.Time {
-	if !start.Before(end) {
-		return time.Time{}
+func (a *App) listMissedSchedules(userID int64, sched cron.Schedule, now time.Time, loc *time.Location) []time.Time {
+	anchor := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).Add(-1 * time.Second)
+
+	var lastRun sql.NullTime
+	err := a.db.QueryRow(`SELECT MAX(started_at) FROM clockin_runs
+		WHERE user_id = ?
+		  AND trigger_type IN ('scheduler', 'scheduler_calibration', 'startup_recovery')`, userID).Scan(&lastRun)
+	if err != nil {
+		log.Printf("调度校准: 查询最近执行记录失败 user=%d: %v", userID, err)
+	} else if lastRun.Valid {
+		anchor = lastRun.Time.In(loc)
 	}
 
-	next := sched.Next(start.Add(-time.Second))
-	var last time.Time
-	for !next.After(end) {
-		last = next
-		next = sched.Next(next)
+	first := sched.Next(anchor)
+	if first.IsZero() || first.After(now) {
+		return nil
 	}
-	return last
+
+	missed := make([]time.Time, 0, 8)
+	for t := first; !t.After(now); t = sched.Next(t) {
+		missed = append(missed, t)
+	}
+	return missed
 }
 
-func (a *App) hasRunNearSchedule(userID int64, scheduled time.Time) bool {
+func (a *App) hasRunForScheduleSlot(userID int64, scheduled, nextDue time.Time) bool {
 	windowStart := scheduled.Add(-90 * time.Second).UTC()
-	windowEnd := scheduled.Add(calibrationLookback).UTC()
+	windowEnd := nextDue.UTC()
 
 	var count int
 	err := a.db.QueryRow(`SELECT COUNT(1) FROM clockin_runs
 		WHERE user_id = ?
 		  AND started_at >= ?
-		  AND started_at <= ?
+		  AND started_at < ?
 		  AND trigger_type IN ('scheduler', 'scheduler_calibration', 'startup_recovery')`,
 		userID, windowStart, windowEnd).Scan(&count)
 	if err != nil {

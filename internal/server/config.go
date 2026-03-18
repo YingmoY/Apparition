@@ -23,13 +23,14 @@ type ServerConfig struct {
 }
 
 type ServerSection struct {
-	Host            string `json:"host"`
-	Port            int    `json:"port"`
-	ReadTimeoutSec  int    `json:"read_timeout_sec"`
-	WriteTimeoutSec int    `json:"write_timeout_sec"`
-	IdleTimeoutSec  int    `json:"idle_timeout_sec"`
-	RealIPHeader    string `json:"real_ip_header"`
-	HelpURL         string `json:"help_url"`
+	Host                       string `json:"host"`
+	Port                       int    `json:"port"`
+	ReadTimeoutSec             int    `json:"read_timeout_sec"`
+	WriteTimeoutSec            int    `json:"write_timeout_sec"`
+	IdleTimeoutSec             int    `json:"idle_timeout_sec"`
+	SchedulerCalibrationMinute int    `json:"scheduler_calibration_minutes"`
+	RealIPHeader               string `json:"real_ip_header"`
+	HelpURL                    string `json:"help_url"`
 }
 
 type AdminSection struct {
@@ -60,11 +61,12 @@ func defaultServerConfig() ServerConfig {
 	hash, _ := bcrypt.GenerateFromPassword([]byte(defaultAdminPassword), bcrypt.DefaultCost)
 	return ServerConfig{
 		Server: ServerSection{
-			Host:            defaultServerListenHost,
-			Port:            defaultServerListenPort,
-			ReadTimeoutSec:  15,
-			WriteTimeoutSec: 30,
-			IdleTimeoutSec:  60,
+			Host:                       defaultServerListenHost,
+			Port:                       defaultServerListenPort,
+			ReadTimeoutSec:             15,
+			WriteTimeoutSec:            30,
+			IdleTimeoutSec:             60,
+			SchedulerCalibrationMinute: 0,
 		},
 		Admin: AdminSection{
 			Username:           defaultAdminUsername,
@@ -115,6 +117,9 @@ func loadServerConfig(path string) (ServerConfig, error) {
 	}
 	if cfg.Server.Port == 0 {
 		cfg.Server.Port = defaultServerListenPort
+	}
+	if cfg.Server.SchedulerCalibrationMinute < 0 {
+		cfg.Server.SchedulerCalibrationMinute = 0
 	}
 	return cfg, nil
 }
