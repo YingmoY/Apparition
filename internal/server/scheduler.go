@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -293,14 +294,19 @@ func (a *App) calibrateOnce(ctx context.Context) {
 func (a *App) listMissedSchedules(userID int64, sched cron.Schedule, now time.Time, loc *time.Location) []time.Time {
 	anchor := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).Add(-1 * time.Second)
 
-	var lastRun sql.NullTime
+	var lastRunRaw sql.NullString
 	err := a.db.QueryRow(`SELECT MAX(started_at) FROM clockin_runs
 		WHERE user_id = ?
-		  AND trigger_type IN ('scheduler', 'scheduler_calibration', 'startup_recovery')`, userID).Scan(&lastRun)
+		  AND trigger_type IN ('scheduler', 'scheduler_calibration', 'startup_recovery')`, userID).Scan(&lastRunRaw)
 	if err != nil {
 		log.Printf("调度校准: 查询最近执行记录失败 user=%d: %v", userID, err)
-	} else if lastRun.Valid {
-		anchor = lastRun.Time.In(loc)
+	} else if lastRunRaw.Valid && strings.TrimSpace(lastRunRaw.String) != "" {
+		parsed, parseErr := parseSQLiteDateTime(strings.TrimSpace(lastRunRaw.String), loc)
+		if parseErr != nil {
+			log.Printf("调度校准: 解析最近执行时间失败 user=%d value=%q: %v", userID, lastRunRaw.String, parseErr)
+		} else {
+			anchor = parsed
+		}
 	}
 
 	first := sched.Next(anchor)
@@ -313,6 +319,34 @@ func (a *App) listMissedSchedules(userID int64, sched cron.Schedule, now time.Ti
 		missed = append(missed, t)
 	}
 	return missed
+}
+
+func parseSQLiteDateTime(raw string, loc *time.Location) (time.Time, error) {
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05Z07:00",
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	}
+
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return t.In(loc), nil
+		}
+	}
+
+	if t, err := time.ParseInLocation("2006-01-02 15:04:05", raw, loc); err == nil {
+		return t.In(loc), nil
+	}
+	if t, err := time.ParseInLocation("2006-01-02 15:04:05.999999999", raw, loc); err == nil {
+		return t.In(loc), nil
+	}
+
+	return time.Time{}, fmt.Errorf("unsupported datetime format")
 }
 
 func (a *App) hasRunForScheduleSlot(userID int64, scheduled, nextDue time.Time) bool {
