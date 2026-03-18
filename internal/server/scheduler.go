@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -13,6 +14,12 @@ type cronScheduler struct {
 	c  *cron.Cron
 	mu sync.Mutex
 }
+
+const (
+	calibrationInterval    = 20 * time.Second
+	calibrationLookback    = 5 * time.Minute
+	calibrationMinLateness = 15 * time.Second
+)
 
 func newCronScheduler() *cronScheduler {
 	loc, err := time.LoadLocation("Asia/Shanghai")
@@ -37,6 +44,7 @@ func (a *App) initScheduler() {
 	a.cron = newCronScheduler()
 	a.loadAllCronJobs()
 	a.cron.start()
+	a.startSchedulerCalibrationLoop()
 }
 
 type cronJobEntry struct {
@@ -91,6 +99,147 @@ func (a *App) loadAllCronJobs() {
 
 func (a *App) reloadCron() {
 	a.loadAllCronJobs()
+}
+
+func (a *App) startSchedulerCalibrationLoop() {
+	a.calibMu.Lock()
+	defer a.calibMu.Unlock()
+
+	if a.calibStop != nil {
+		return
+	}
+
+	a.calibStop = make(chan struct{})
+	a.calibWg.Add(1)
+	go func(stop <-chan struct{}) {
+		defer a.calibWg.Done()
+		a.runSchedulerCalibrationLoop(stop)
+	}(a.calibStop)
+}
+
+func (a *App) stopSchedulerCalibrationLoop() {
+	a.calibMu.Lock()
+	stop := a.calibStop
+	a.calibStop = nil
+	a.calibMu.Unlock()
+
+	if stop == nil {
+		return
+	}
+	close(stop)
+	a.calibWg.Wait()
+}
+
+func (a *App) runSchedulerCalibrationLoop(stop <-chan struct{}) {
+	ticker := time.NewTicker(calibrationInterval)
+	defer ticker.Stop()
+
+	// Run one pass shortly after startup so a just-missed slot is recovered quickly.
+	startupTimer := time.NewTimer(3 * time.Second)
+	defer startupTimer.Stop()
+
+	for {
+		select {
+		case <-stop:
+			return
+		case <-startupTimer.C:
+			a.calibrateOnce(context.Background())
+		case <-ticker.C:
+			a.calibrateOnce(context.Background())
+		}
+	}
+}
+
+func (a *App) calibrateOnce(ctx context.Context) {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		loc = time.FixedZone("CST", 8*3600)
+	}
+
+	now := time.Now().In(loc)
+	windowStart := now.Add(-calibrationLookback)
+
+	rows, err := a.db.QueryContext(ctx, `SELECT user_id, cron_expr FROM clockin_jobs WHERE enabled = 1 AND cron_expr != ''`)
+	if err != nil {
+		log.Printf("调度校准: 查询任务失败: %v", err)
+		return
+	}
+
+	var jobs []cronJobEntry
+	for rows.Next() {
+		var j cronJobEntry
+		if err := rows.Scan(&j.userID, &j.cronExpr); err != nil {
+			continue
+		}
+		jobs = append(jobs, j)
+	}
+	rows.Close()
+
+	if len(jobs) == 0 {
+		return
+	}
+
+	parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	for _, j := range jobs {
+		sched, err := parser.Parse(j.cronExpr)
+		if err != nil {
+			log.Printf("调度校准: 解析 cron 失败 user=%d expr=%s: %v", j.userID, j.cronExpr, err)
+			continue
+		}
+
+		dueAt := lastScheduledBetween(sched, windowStart, now)
+		if dueAt.IsZero() {
+			continue
+		}
+		lateness := now.Sub(dueAt)
+		if lateness < calibrationMinLateness {
+			continue
+		}
+		if a.hasRunNearSchedule(j.userID, dueAt) {
+			continue
+		}
+
+		uid := j.userID
+		scheduled := dueAt
+		go func() {
+			log.Printf("调度校准: 触发补偿执行 user=%d scheduled=%s delay=%s", uid, scheduled.Format("15:04:05"), time.Since(scheduled).Truncate(time.Second))
+			runID, status, message := a.executeClockinRun(uid, "scheduler_calibration")
+			log.Printf("调度校准: 完成 user=%d run=%d status=%s message=%s", uid, runID, status, message)
+		}()
+	}
+}
+
+func lastScheduledBetween(sched cron.Schedule, start, end time.Time) time.Time {
+	if !start.Before(end) {
+		return time.Time{}
+	}
+
+	next := sched.Next(start.Add(-time.Second))
+	var last time.Time
+	for !next.After(end) {
+		last = next
+		next = sched.Next(next)
+	}
+	return last
+}
+
+func (a *App) hasRunNearSchedule(userID int64, scheduled time.Time) bool {
+	windowStart := scheduled.Add(-90 * time.Second).UTC()
+	windowEnd := scheduled.Add(calibrationLookback).UTC()
+
+	var count int
+	err := a.db.QueryRow(`SELECT COUNT(1) FROM clockin_runs
+		WHERE user_id = ?
+		  AND started_at >= ?
+		  AND started_at <= ?
+		  AND trigger_type IN ('scheduler', 'scheduler_calibration', 'startup_recovery')`,
+		userID, windowStart, windowEnd).Scan(&count)
+	if err != nil {
+		log.Printf("调度校准: 查询执行记录失败 user=%d: %v", userID, err)
+		return false
+	}
+	return count > 0
 }
 
 func (a *App) validateCronExpr(expr string) error {
