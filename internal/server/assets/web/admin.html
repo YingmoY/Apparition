@@ -31,6 +31,7 @@
         <li class="layui-this">用户列表</li>
         <li>打卡记录</li>
         <li>审计日志</li>
+        <li>全员通知</li>
       </ul>
       <div class="layui-tab-content" style="padding-top:12px;">
         <div class="layui-tab-item layui-show">
@@ -50,6 +51,32 @@
             <thead><tr><th>ID</th><th>用户ID</th><th>动作</th><th>目标</th><th>摘要</th><th>时间</th></tr></thead>
             <tbody id="logsBody"></tbody>
           </table>
+        </div>
+        <div class="layui-tab-item">
+          <div class="layui-form" style="max-width:760px;">
+            <div class="layui-form-item">
+              <label class="layui-form-label" style="width:90px;">通知标题</label>
+              <div class="layui-input-block" style="margin-left:120px;">
+                <input id="notifyTitle" type="text" class="layui-input" maxlength="120" placeholder="例如：系统维护通知" />
+              </div>
+            </div>
+            <div class="layui-form-item layui-form-text">
+              <label class="layui-form-label" style="width:90px;">通知内容</label>
+              <div class="layui-input-block" style="margin-left:120px;">
+                <textarea id="notifyBody" class="layui-textarea" rows="7" maxlength="2000" placeholder="请输入要发送给全体用户的通知内容"></textarea>
+              </div>
+            </div>
+            <div class="layui-form-item">
+              <div class="layui-input-block" style="margin-left:120px;">
+                <button id="sendBroadcastBtn" type="button" class="layui-btn">发送全员通知</button>
+                <div style="margin-top:10px;color:#666;font-size:13px;line-height:1.7;">
+                  将按每位用户已启用的通知渠道发送。若用户配置了多个渠道，将全部发送。<br />
+                  电子邮件逐个收件人独立发送，不会暴露其他用户邮箱。
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="broadcastResult" style="margin-top:12px;color:#555;font-size:13px;"></div>
         </div>
       </div>
     </div>
@@ -129,12 +156,56 @@ layui.use(["layer", "element"], function () {
     });
   }
 
+  function renderChannelStats(title, stats) {
+    if (!stats) return title + " 无";
+    var keys = Object.keys(stats);
+    if (!keys.length) return title + " 无";
+    var parts = keys.map(function (k) { return esc(k) + ": " + Number(stats[k] || 0); });
+    return title + " " + parts.join("，");
+  }
+
+  function sendBroadcastNotify() {
+    var title = (document.getElementById("notifyTitle").value || "").trim();
+    var body = (document.getElementById("notifyBody").value || "").trim();
+    if (!title) { layer.msg("请输入通知标题"); return; }
+    if (!body) { layer.msg("请输入通知内容"); return; }
+
+    var btn = document.getElementById("sendBroadcastBtn");
+    btn.disabled = true;
+    btn.classList.add("layui-btn-disabled");
+
+    api("/api/v1/admin/broadcast-notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title, body: body })
+    }).then(function (r) {
+      if (!r.ok) {
+        layer.msg((r.data && r.data.message) || "发送失败");
+        return;
+      }
+      layer.msg("全员通知已发送");
+      var d = (r.data && r.data.data) || {};
+      var lines = [];
+      lines.push("覆盖用户数: " + Number(d.users_with_channels || 0));
+      lines.push("总尝试: " + Number(d.attempt_count || 0) + "，成功: " + Number(d.success_count || 0) + "，失败: " + Number(d.fail_count || 0));
+      lines.push(renderChannelStats("各渠道尝试:", d.channel_type_attempts));
+      lines.push(renderChannelStats("各渠道成功:", d.channel_type_success));
+      lines.push(renderChannelStats("各渠道失败:", d.channel_type_fail));
+      document.getElementById("broadcastResult").innerHTML = lines.map(function (s) { return "<div>" + esc(s) + "</div>"; }).join("");
+      loadLogs();
+    }).finally(function () {
+      btn.disabled = false;
+      btn.classList.remove("layui-btn-disabled");
+    });
+  }
+
   ensureAdmin().then(function (ok) {
     if (!ok) return;
     loadUsers(); loadRuns(); loadLogs();
   });
 
   document.getElementById("back").addEventListener("click", function () { location.href = "/dashboard"; });
+  document.getElementById("sendBroadcastBtn").addEventListener("click", sendBroadcastNotify);
   document.getElementById("logout").addEventListener("click", function () {
     fetch("/api/v1/auth/logout", {method: "POST"}).then(function () { location.href = "/login"; });
   });

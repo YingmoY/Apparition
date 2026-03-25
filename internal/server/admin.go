@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -210,5 +211,70 @@ func (a *App) handleAdminBulkClockin(w http.ResponseWriter, r *http.Request) {
 		"success_count": successCount,
 		"fail_count":    failCount,
 		"results":       results,
+	})
+}
+
+func (a *App) handleAdminBroadcastNotify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+		return
+	}
+
+	admin, _, err := a.currentUserFromRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, "未登录", nil)
+		return
+	}
+	if admin.Role != "admin" {
+		writeJSON(w, http.StatusForbidden, "无权限", nil)
+		return
+	}
+
+	var payload struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	title := strings.TrimSpace(payload.Title)
+	body := strings.TrimSpace(payload.Body)
+	if title == "" {
+		writeJSON(w, http.StatusBadRequest, "标题不能为空", nil)
+		return
+	}
+	if body == "" {
+		writeJSON(w, http.StatusBadRequest, "内容不能为空", nil)
+		return
+	}
+
+	result, err := a.broadcastNotificationToAllChannels(title, body)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, "发送全员通知失败: "+err.Error(), nil)
+		return
+	}
+
+	a.writeAuditLog(&admin.ID, "admin", "broadcast_notify", "notification_channels", "all_users",
+		fmt.Sprintf("全员通知: 标题=%s, 尝试=%d, 成功=%d, 失败=%d", trimTo(title, 80), result.AttemptCount, result.SuccessCount, result.FailCount),
+		map[string]any{
+			"title":                title,
+			"users_with_channels":  result.UsersWithChannels,
+			"attempt_count":        result.AttemptCount,
+			"success_count":        result.SuccessCount,
+			"fail_count":           result.FailCount,
+			"channel_type_attempts": result.ChannelTypeAttempts,
+			"channel_type_success": result.ChannelTypeSuccess,
+			"channel_type_fail":    result.ChannelTypeFail,
+		})
+
+	writeJSON(w, http.StatusOK, "ok", map[string]any{
+		"users_with_channels":  result.UsersWithChannels,
+		"attempt_count":        result.AttemptCount,
+		"success_count":        result.SuccessCount,
+		"fail_count":           result.FailCount,
+		"channel_type_attempts": result.ChannelTypeAttempts,
+		"channel_type_success": result.ChannelTypeSuccess,
+		"channel_type_fail":    result.ChannelTypeFail,
 	})
 }

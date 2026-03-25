@@ -27,6 +27,22 @@ type barkNotifyConfig struct {
 	DeviceKey string `json:"device_key"`
 }
 
+type userChannelDispatch struct {
+	userID      int64
+	channelType string
+	cfgJSON     string
+}
+
+type broadcastNotifyResult struct {
+	UsersWithChannels  int            `json:"users_with_channels"`
+	AttemptCount       int            `json:"attempt_count"`
+	SuccessCount       int            `json:"success_count"`
+	FailCount          int            `json:"fail_count"`
+	ChannelTypeAttempts map[string]int `json:"channel_type_attempts"`
+	ChannelTypeSuccess map[string]int `json:"channel_type_success"`
+	ChannelTypeFail    map[string]int `json:"channel_type_fail"`
+}
+
 // --- Notification event types ---
 const (
 	notifyEventLogin          = "login"
@@ -203,6 +219,61 @@ func (a *App) sendNotification(userID int64, channelType, title, body string) er
 		return err
 	}
 	return a.dispatchNotification(channelType, cfgJSON, title, body)
+}
+
+func (a *App) collectAllUserEnabledChannels() ([]userChannelDispatch, int, error) {
+	rows, err := a.db.Query(`SELECT nc.user_id, nc.channel_type, nc.config_json
+		FROM notification_channels nc
+		JOIN users u ON u.id = nc.user_id
+		WHERE nc.enabled = 1 AND u.status = 'active'`)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	channels := make([]userChannelDispatch, 0)
+	users := make(map[int64]struct{})
+	for rows.Next() {
+		var ch userChannelDispatch
+		if err := rows.Scan(&ch.userID, &ch.channelType, &ch.cfgJSON); err != nil {
+			continue
+		}
+		users[ch.userID] = struct{}{}
+		channels = append(channels, ch)
+	}
+	rows.Close()
+
+	return channels, len(users), nil
+}
+
+func (a *App) broadcastNotificationToAllChannels(title, body string) (broadcastNotifyResult, error) {
+	result := broadcastNotifyResult{
+		ChannelTypeAttempts: make(map[string]int),
+		ChannelTypeSuccess:  make(map[string]int),
+		ChannelTypeFail:     make(map[string]int),
+	}
+
+	channels, usersWithChannels, err := a.collectAllUserEnabledChannels()
+	if err != nil {
+		return result, err
+	}
+	result.UsersWithChannels = usersWithChannels
+
+	for _, ch := range channels {
+		result.AttemptCount++
+		result.ChannelTypeAttempts[ch.channelType]++
+
+		if err := a.dispatchNotification(ch.channelType, ch.cfgJSON, title, body); err != nil {
+			result.FailCount++
+			result.ChannelTypeFail[ch.channelType]++
+			log.Printf("全员通知发送失败 user=%d channel=%s: %v", ch.userID, ch.channelType, err)
+			continue
+		}
+
+		result.SuccessCount++
+		result.ChannelTypeSuccess[ch.channelType]++
+	}
+
+	return result, nil
 }
 
 func (a *App) dispatchNotification(channelType, cfgJSON, title, body string) error {
