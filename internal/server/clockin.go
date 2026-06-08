@@ -330,8 +330,20 @@ func (a *App) handleClockinRuns(w http.ResponseWriter, r *http.Request) {
 // --- Core execution logic ---
 
 func (a *App) executeClockinRun(userID int64, triggerType string) (int64, string, string) {
+	return a.executeClockinRunForDate(userID, triggerType, "")
+}
+
+func (a *App) executeClockinRunForDate(userID int64, triggerType, runDate string) (int64, string, string) {
 	startedAt := time.Now().UTC()
-	runDate := startedAt.Format("20060102")
+	if strings.TrimSpace(runDate) == "" {
+		runDate = clockinRunDate(startedAt)
+	}
+
+	if isSchedulerTrigger(triggerType) && a.hasScheduledRunForDate(userID, runDate) {
+		message := "今日定时任务已执行，跳过重复打卡"
+		log.Printf("跳过重复定时打卡: user=%d trigger=%s run_date=%s", userID, triggerType, runDate)
+		return 0, "skipped", message
+	}
 
 	cfg, err := a.loadCoreConfigFromProfile(userID)
 	if err != nil {
@@ -367,6 +379,21 @@ func (a *App) executeClockinRun(userID int64, triggerType string) (int64, string
 	go a.sendUserNotifications(userID, evtType, title, result.Message)
 
 	return runID, finalStatus, finalMsg
+}
+
+func (a *App) hasScheduledRunForDate(userID int64, runDate string) bool {
+	var count int
+	err := a.db.QueryRow(`SELECT COUNT(1) FROM clockin_runs
+		WHERE user_id = ?
+		  AND run_date = ?
+		  AND status = 'success'
+		  AND trigger_type IN ('scheduler', 'scheduler_calibration', 'startup_recovery')`,
+		userID, runDate).Scan(&count)
+	if err != nil {
+		log.Printf("查询定时任务日期执行记录失败 user=%d run_date=%s: %v", userID, runDate, err)
+		return false
+	}
+	return count > 0
 }
 
 func (a *App) insertClockinRun(userID int64, triggerType, status, message string, startedAt time.Time, runDate string) (int64, string, string) {

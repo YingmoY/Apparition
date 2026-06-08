@@ -1,6 +1,7 @@
 package core
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -33,14 +34,21 @@ func TestExtractCampaignID(t *testing.T) {
 }
 
 func TestNewServiceLoadsConfig(t *testing.T) {
-	service, err := NewService(filepath.Join("..", "..", "config.json"), "")
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	configJSON := `{"cookie_file_path":"cookie.json","target_url":"https://f.kdocs.cn/g/MmHrjlBS#routePrompt","input_name":"测试用户"}`
+	if err := os.WriteFile(configPath, []byte(configJSON), 0o600); err != nil {
+		t.Fatalf("写入测试配置失败: %v", err)
+	}
+
+	service, err := NewService(configPath, "")
 	if err != nil {
 		t.Fatalf("加载服务失败: %v", err)
 	}
 	if service.Config.TargetURL == "" {
 		t.Fatal("TargetURL 不应为空")
 	}
-	if service.CookiePath == "" {
-		t.Fatal("CookiePath 不应为空")
+	if service.CookiePath != filepath.Join(dir, "cookie.json") {
+		t.Fatalf("CookiePath 错误: got %s", service.CookiePath)
 	}
 }

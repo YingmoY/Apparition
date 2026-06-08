@@ -11,21 +11,23 @@ import (
 )
 
 type App struct {
-	paths      RuntimePaths
-	cfg        ServerConfig
-	db         *sql.DB
-	http       *http.Server
-	closeLog   func()
-	cron       *cronScheduler
-	schedMu    sync.Mutex
-	schedWg    sync.WaitGroup
-	schedStop  chan struct{}
-	schedQueue chan scheduledRun
-	calibMu    sync.Mutex
-	calibWg    sync.WaitGroup
-	calibStop  chan struct{}
-	wpsMu      sync.RWMutex
-	wpsRuns    map[string]*wpsRuntimeSession
+	paths       RuntimePaths
+	cfg         ServerConfig
+	db          *sql.DB
+	http        *http.Server
+	closeLog    func()
+	cron        *cronScheduler
+	schedMu     sync.Mutex
+	schedWg     sync.WaitGroup
+	schedStop   chan struct{}
+	schedQueue  chan scheduledRun
+	calibMu     sync.Mutex
+	calibWg     sync.WaitGroup
+	calibStop   chan struct{}
+	runDedupeMu sync.Mutex
+	pendingRuns map[string]struct{}
+	wpsMu       sync.RWMutex
+	wpsRuns     map[string]*wpsRuntimeSession
 }
 
 func NewApp() (*App, error) {
@@ -68,11 +70,12 @@ func NewApp() (*App, error) {
 	}
 
 	app := &App{
-		paths:    paths,
-		cfg:      cfg,
-		db:       db,
-		closeLog: closeLog,
-		wpsRuns:  make(map[string]*wpsRuntimeSession),
+		paths:       paths,
+		cfg:         cfg,
+		db:          db,
+		closeLog:    closeLog,
+		pendingRuns: make(map[string]struct{}),
+		wpsRuns:     make(map[string]*wpsRuntimeSession),
 	}
 
 	app.http = &http.Server{

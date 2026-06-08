@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -34,13 +35,13 @@ type userChannelDispatch struct {
 }
 
 type broadcastNotifyResult struct {
-	UsersWithChannels  int            `json:"users_with_channels"`
-	AttemptCount       int            `json:"attempt_count"`
-	SuccessCount       int            `json:"success_count"`
-	FailCount          int            `json:"fail_count"`
+	UsersWithChannels   int            `json:"users_with_channels"`
+	AttemptCount        int            `json:"attempt_count"`
+	SuccessCount        int            `json:"success_count"`
+	FailCount           int            `json:"fail_count"`
 	ChannelTypeAttempts map[string]int `json:"channel_type_attempts"`
-	ChannelTypeSuccess map[string]int `json:"channel_type_success"`
-	ChannelTypeFail    map[string]int `json:"channel_type_fail"`
+	ChannelTypeSuccess  map[string]int `json:"channel_type_success"`
+	ChannelTypeFail     map[string]int `json:"channel_type_fail"`
 }
 
 // --- Notification event types ---
@@ -335,15 +336,46 @@ func sendGotifyNotification(cfg gotifyNotifyConfig, title, body string) error {
 }
 
 func sendBarkNotification(cfg barkNotifyConfig, title, body string) error {
-	url := strings.TrimRight(cfg.ServerURL, "/") + "/" + cfg.DeviceKey + "/" + title + "/" + body
-	resp, err := httpNotifyClient.Get(url)
+	serverURL := strings.TrimRight(strings.TrimSpace(cfg.ServerURL), "/")
+	if serverURL == "" {
+		serverURL = "https://api.day.app"
+	}
+	deviceKey := strings.TrimSpace(cfg.DeviceKey)
+	if deviceKey == "" {
+		return fmt.Errorf("Bark Device Key 未配置")
+	}
+
+	payload, err := json.Marshal(map[string]string{
+		"device_key": deviceKey,
+		"title":      title,
+		"body":       body,
+	})
+	if err != nil {
+		return fmt.Errorf("序列化 Bark 请求失败: %w", err)
+	}
+
+	resp, err := httpNotifyClient.Post(serverURL+"/push", "application/json; charset=utf-8", strings.NewReader(string(payload)))
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("Bark 返回状态码 %d", resp.StatusCode)
+		return fmt.Errorf("Bark 返回状态码 %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
+
+	var apiResp struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if len(respBody) > 0 && json.Unmarshal(respBody, &apiResp) == nil && apiResp.Code != 0 && apiResp.Code != 200 {
+		if strings.TrimSpace(apiResp.Message) == "" {
+			apiResp.Message = strings.TrimSpace(string(respBody))
+		}
+		return fmt.Errorf("Bark 返回错误 code=%d message=%s", apiResp.Code, apiResp.Message)
+	}
+
 	return nil
 }
 
