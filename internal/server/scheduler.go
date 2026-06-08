@@ -25,6 +25,8 @@ type scheduledRun struct {
 	userID      int64
 	triggerType string
 	scheduledAt time.Time
+	runDate     string
+	dedupeKey   string
 }
 
 func newCronScheduler() *cronScheduler {
@@ -141,13 +143,19 @@ func (a *App) runSchedulerRunner(stop <-chan struct{}, queue <-chan scheduledRun
 		case <-stop:
 			return
 		case task := <-queue:
-			delay := time.Since(task.scheduledAt).Truncate(time.Second)
-			if delay < 0 {
-				delay = 0
-			}
-			log.Printf("调度执行器: 开始执行 user=%d trigger=%s delay=%s", task.userID, task.triggerType, delay)
-			runID, status, message := a.executeClockinRun(task.userID, task.triggerType)
-			log.Printf("调度执行器: 执行完成 user=%d run=%d status=%s message=%s", task.userID, runID, status, message)
+			func() {
+				if task.dedupeKey != "" {
+					defer a.releaseScheduledRun(task.dedupeKey)
+				}
+
+				delay := time.Since(task.scheduledAt).Truncate(time.Second)
+				if delay < 0 {
+					delay = 0
+				}
+				log.Printf("调度执行器: 开始执行 user=%d trigger=%s run_date=%s delay=%s", task.userID, task.triggerType, task.runDate, delay)
+				runID, status, message := a.executeClockinRunForDate(task.userID, task.triggerType, task.runDate)
+				log.Printf("调度执行器: 执行完成 user=%d run=%d status=%s message=%s", task.userID, runID, status, message)
+			}()
 		}
 	}
 }
@@ -163,10 +171,23 @@ func (a *App) submitScheduledRun(userID int64, triggerType string, scheduledAt t
 		return false
 	}
 
-	task := scheduledRun{userID: userID, triggerType: triggerType, scheduledAt: scheduledAt}
+	runDate := clockinRunDate(scheduledAt)
+	dedupeKey := ""
+	if isSchedulerTrigger(triggerType) {
+		dedupeKey = scheduledRunDedupeKey(userID, runDate)
+		if !a.reserveScheduledRun(dedupeKey) {
+			log.Printf("调度执行器: 已存在待执行/执行中的定时任务，跳过重复入队 user=%d trigger=%s run_date=%s", userID, triggerType, runDate)
+			return false
+		}
+	}
+
+	task := scheduledRun{userID: userID, triggerType: triggerType, scheduledAt: scheduledAt, runDate: runDate, dedupeKey: dedupeKey}
 
 	select {
 	case <-stop:
+		if dedupeKey != "" {
+			a.releaseScheduledRun(dedupeKey)
+		}
 		return false
 	case queue <- task:
 		return true
@@ -175,6 +196,9 @@ func (a *App) submitScheduledRun(userID int64, triggerType string, scheduledAt t
 		go func() {
 			select {
 			case <-stop:
+				if dedupeKey != "" {
+					a.releaseScheduledRun(dedupeKey)
+				}
 				return
 			case queue <- task:
 			}
@@ -367,6 +391,59 @@ func (a *App) hasRunForScheduleSlot(userID int64, scheduled, nextDue time.Time) 
 	return count > 0
 }
 
+func schedulerLocation() *time.Location {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return time.FixedZone("CST", 8*3600)
+	}
+	return loc
+}
+
+func clockinRunDate(t time.Time) string {
+	if t.IsZero() {
+		t = time.Now()
+	}
+	return t.In(schedulerLocation()).Format("20060102")
+}
+
+func isSchedulerTrigger(triggerType string) bool {
+	switch triggerType {
+	case "scheduler", "scheduler_calibration", "startup_recovery":
+		return true
+	default:
+		return false
+	}
+}
+
+func scheduledRunDedupeKey(userID int64, runDate string) string {
+	return fmt.Sprintf("%d:%s", userID, runDate)
+}
+
+func (a *App) reserveScheduledRun(key string) bool {
+	if key == "" {
+		return true
+	}
+	a.runDedupeMu.Lock()
+	defer a.runDedupeMu.Unlock()
+	if a.pendingRuns == nil {
+		a.pendingRuns = make(map[string]struct{})
+	}
+	if _, ok := a.pendingRuns[key]; ok {
+		return false
+	}
+	a.pendingRuns[key] = struct{}{}
+	return true
+}
+
+func (a *App) releaseScheduledRun(key string) {
+	if key == "" {
+		return
+	}
+	a.runDedupeMu.Lock()
+	defer a.runDedupeMu.Unlock()
+	delete(a.pendingRuns, key)
+}
+
 func (a *App) validateCronExpr(expr string) error {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
@@ -457,10 +534,10 @@ func (a *App) recoverMissedJobs() {
 		nextTime := sched.Next(startOfToday.Add(-1 * time.Second))
 
 		if nextTime.In(loc).Format("20060102") == todayStr && nextTime.Before(now) {
-			log.Printf("恢复遗漏任务: 执行补签 user=%d scheduled=%s", j.userID, nextTime.In(loc).Format("15:04:05"))
-			runID, status, message := a.executeClockinRun(j.userID, "startup_recovery")
-			log.Printf("恢复遗漏任务: 完成 user=%d run=%d status=%s message=%s", j.userID, runID, status, message)
-			recoveredCount++
+			log.Printf("恢复遗漏任务: 入队补签 user=%d scheduled=%s", j.userID, nextTime.In(loc).Format("15:04:05"))
+			if a.submitScheduledRun(j.userID, "startup_recovery", nextTime) {
+				recoveredCount++
+			}
 		}
 	}
 
