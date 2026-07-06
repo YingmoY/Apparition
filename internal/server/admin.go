@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -135,6 +136,163 @@ func (a *App) handleAdminRuns(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *App) handleAdminClockinJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+		return
+	}
+	if err := a.requireAdmin(r); err != nil {
+		writeJSON(w, http.StatusForbidden, "forbidden", nil)
+		return
+	}
+
+	p := parsePagination(r)
+	var total int
+	_ = a.db.QueryRow(`SELECT COUNT(1) FROM clockin_jobs`).Scan(&total)
+
+	rows, err := a.db.Query(`SELECT j.id, j.user_id, u.email, u.nickname, u.status,
+		j.enabled, j.cron_expr, j.last_run_at, j.created_at, j.updated_at
+		FROM clockin_jobs j JOIN users u ON u.id = j.user_id
+		ORDER BY j.updated_at DESC, j.id DESC LIMIT ? OFFSET ?`, p.PageSize, p.Offset)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, "query clockin jobs failed", nil)
+		return
+	}
+	defer rows.Close()
+
+	items := make([]map[string]any, 0)
+	for rows.Next() {
+		var (
+			id, userID           int64
+			email, nickname      string
+			userStatus, cronExpr string
+			enabled              int
+			lastRunAt            sql.NullTime
+			createdAt, updatedAt time.Time
+		)
+		if err := rows.Scan(&id, &userID, &email, &nickname, &userStatus, &enabled, &cronExpr, &lastRunAt, &createdAt, &updatedAt); err != nil {
+			continue
+		}
+		hour, minute := parseCronTime(cronExpr)
+		item := map[string]any{
+			"id": id, "user_id": userID, "email": email, "nickname": nickname,
+			"user_status": userStatus, "enabled": enabled == 1, "cron_expr": cronExpr,
+			"hour": hour, "minute": minute,
+			"created_at": createdAt.Format(time.RFC3339), "updated_at": updatedAt.Format(time.RFC3339),
+		}
+		if lastRunAt.Valid {
+			item["last_run_at"] = lastRunAt.Time.Format(time.RFC3339)
+		}
+		items = append(items, item)
+	}
+
+	writeJSON(w, http.StatusOK, "ok", map[string]any{
+		"items": items, "total": total, "page": p.Page, "page_size": p.PageSize,
+	})
+}
+
+func (a *App) handleAdminClockinJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+		return
+	}
+	admin, _, err := a.currentUserFromRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, "unauthorized", nil)
+		return
+	}
+	if admin.Role != "admin" {
+		writeJSON(w, http.StatusForbidden, "forbidden", nil)
+		return
+	}
+
+	idText := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/clockin-jobs/")
+	id, err := strconv.ParseInt(strings.Trim(idText, "/"), 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, "invalid job id", nil)
+		return
+	}
+
+	var payload struct {
+		Enabled bool `json:"enabled"`
+	}
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	var cronExpr string
+	var userID int64
+	err = a.db.QueryRow(`SELECT user_id, cron_expr FROM clockin_jobs WHERE id = ?`, id).Scan(&userID, &cronExpr)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, "clockin job not found", nil)
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, "query clockin job failed", nil)
+		return
+	}
+	if payload.Enabled && strings.TrimSpace(cronExpr) == "" {
+		writeJSON(w, http.StatusBadRequest, "cannot enable a job without cron expression", nil)
+		return
+	}
+	if payload.Enabled {
+		if err := a.validateCronExpr(cronExpr); err != nil {
+			writeJSON(w, http.StatusBadRequest, "invalid cron expression: "+err.Error(), nil)
+			return
+		}
+	}
+
+	now := time.Now().UTC()
+	_, err = a.db.Exec(`UPDATE clockin_jobs SET enabled = ?, updated_at = ? WHERE id = ?`,
+		boolToInt(payload.Enabled), now, id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, "update clockin job failed", nil)
+		return
+	}
+
+	a.reloadCron()
+	action := "admin_enable_clockin_job"
+	if !payload.Enabled {
+		action = "admin_disable_clockin_job"
+	}
+	a.writeAuditLog(&admin.ID, "admin", action, "clockin_jobs", formatUserID(id),
+		fmt.Sprintf("admin set clockin job enabled=%t for user %d", payload.Enabled, userID),
+		map[string]any{"job_id": id, "user_id": userID, "enabled": payload.Enabled})
+
+	writeJSON(w, http.StatusOK, "ok", map[string]any{"id": id, "enabled": payload.Enabled})
+}
+
+func (a *App) handleAdminDisableAllClockinJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
+		return
+	}
+	admin, _, err := a.currentUserFromRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, "unauthorized", nil)
+		return
+	}
+	if admin.Role != "admin" {
+		writeJSON(w, http.StatusForbidden, "forbidden", nil)
+		return
+	}
+
+	now := time.Now().UTC()
+	result, err := a.db.Exec(`UPDATE clockin_jobs SET enabled = 0, updated_at = ? WHERE enabled = 1`, now)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, "disable clockin jobs failed", nil)
+		return
+	}
+	disabledCount, _ := result.RowsAffected()
+
+	a.reloadCron()
+	a.writeAuditLog(&admin.ID, "admin", "admin_disable_all_clockin_jobs", "clockin_jobs", "all",
+		fmt.Sprintf("admin disabled %d clockin jobs", disabledCount),
+		map[string]any{"disabled_count": disabledCount})
+
+	writeJSON(w, http.StatusOK, "ok", map[string]any{"disabled_count": disabledCount})
+}
+
 func (a *App) handleAdminBulkClockin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, "method not allowed", nil)
@@ -258,23 +416,23 @@ func (a *App) handleAdminBroadcastNotify(w http.ResponseWriter, r *http.Request)
 	a.writeAuditLog(&admin.ID, "admin", "broadcast_notify", "notification_channels", "all_users",
 		fmt.Sprintf("全员通知: 标题=%s, 尝试=%d, 成功=%d, 失败=%d", trimTo(title, 80), result.AttemptCount, result.SuccessCount, result.FailCount),
 		map[string]any{
-			"title":                title,
-			"users_with_channels":  result.UsersWithChannels,
-			"attempt_count":        result.AttemptCount,
-			"success_count":        result.SuccessCount,
-			"fail_count":           result.FailCount,
+			"title":                 title,
+			"users_with_channels":   result.UsersWithChannels,
+			"attempt_count":         result.AttemptCount,
+			"success_count":         result.SuccessCount,
+			"fail_count":            result.FailCount,
 			"channel_type_attempts": result.ChannelTypeAttempts,
-			"channel_type_success": result.ChannelTypeSuccess,
-			"channel_type_fail":    result.ChannelTypeFail,
+			"channel_type_success":  result.ChannelTypeSuccess,
+			"channel_type_fail":     result.ChannelTypeFail,
 		})
 
 	writeJSON(w, http.StatusOK, "ok", map[string]any{
-		"users_with_channels":  result.UsersWithChannels,
-		"attempt_count":        result.AttemptCount,
-		"success_count":        result.SuccessCount,
-		"fail_count":           result.FailCount,
+		"users_with_channels":   result.UsersWithChannels,
+		"attempt_count":         result.AttemptCount,
+		"success_count":         result.SuccessCount,
+		"fail_count":            result.FailCount,
 		"channel_type_attempts": result.ChannelTypeAttempts,
-		"channel_type_success": result.ChannelTypeSuccess,
-		"channel_type_fail":    result.ChannelTypeFail,
+		"channel_type_success":  result.ChannelTypeSuccess,
+		"channel_type_fail":     result.ChannelTypeFail,
 	})
 }

@@ -67,6 +67,9 @@ func (a *App) router() http.Handler {
 	mux.HandleFunc("/api/v1/admin/users", a.handleAdminUsers)
 	mux.HandleFunc("/api/v1/admin/runs", a.handleAdminRuns)
 	mux.HandleFunc("/api/v1/admin/logs", a.handleAdminLogs)
+	mux.HandleFunc("/api/v1/admin/clockin-jobs", a.handleAdminClockinJobs)
+	mux.HandleFunc("/api/v1/admin/clockin-jobs/", a.handleAdminClockinJob)
+	mux.HandleFunc("/api/v1/admin/clockin-jobs/disable-all", a.handleAdminDisableAllClockinJobs)
 	mux.HandleFunc("/api/v1/admin/bulk-clockin", a.handleAdminBulkClockin)
 	mux.HandleFunc("/api/v1/admin/broadcast-notify", a.handleAdminBroadcastNotify)
 

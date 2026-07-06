@@ -103,6 +103,9 @@ func (a *App) loadAllCronJobs() {
 }
 
 func (a *App) reloadCron() {
+	if a.cron == nil {
+		return
+	}
 	a.loadAllCronJobs()
 }
 

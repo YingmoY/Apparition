@@ -10,6 +10,11 @@
     .panel { max-width: 1000px; margin: 0 auto; padding: 20px 16px 40px; }
     .header-card { background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 20px 24px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
     .content-card { background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 20px 24px; }
+    .toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+    .muted { color:#666; font-size:13px; }
+    .status-pill { display:inline-block; min-width:44px; text-align:center; padding:2px 8px; border-radius:4px; font-size:12px; }
+    .status-on { background:#e8f8e8; color:#389e0d; }
+    .status-off { background:#f5f5f5; color:#777; }
   </style>
 </head>
 <body>
@@ -87,6 +92,7 @@
 <script>
 layui.use(["layer", "element"], function () {
   var layer = layui.layer;
+  var element = layui.element;
 
   function api(url, opts) {
     return fetch(url, opts || {}).then(function (res) {
@@ -98,6 +104,36 @@ layui.use(["layer", "element"], function () {
   function localTime(s) {
     if (!s) return "-";
     try { return new Date(s).toLocaleString("zh-CN", { hour12: false }); } catch(e) { return s; }
+  }
+
+  function installJobsTab() {
+    var title = document.querySelector(".layui-tab-title");
+    var content = document.querySelector(".layui-tab-content");
+    if (!title || !content || document.getElementById("jobsBody")) return;
+
+    var li = document.createElement("li");
+    li.textContent = "打卡任务";
+    title.insertBefore(li, title.children[1] || null);
+
+    var tab = document.createElement("div");
+    tab.className = "layui-tab-item";
+    tab.innerHTML = ''
+      + '<div class="toolbar">'
+      + '  <div class="muted" id="jobsSummary">正在加载打卡任务...</div>'
+      + '  <div style="display:flex; gap:8px;">'
+      + '    <button id="refreshJobsBtn" type="button" class="layui-btn layui-btn-primary layui-btn-sm">刷新</button>'
+      + '    <button id="disableAllJobsBtn" type="button" class="layui-btn layui-btn-danger layui-btn-sm">一键禁用全部</button>'
+      + '  </div>'
+      + '</div>'
+      + '<table class="layui-table" lay-size="sm">'
+      + '  <thead><tr><th>ID</th><th>用户</th><th>昵称</th><th>状态</th><th>执行时间</th><th>最近执行</th><th>操作</th></tr></thead>'
+      + '  <tbody id="jobsBody"></tbody>'
+      + '</table>';
+    content.insertBefore(tab, content.children[1] || null);
+
+    document.getElementById("refreshJobsBtn").addEventListener("click", function () { loadJobs(); });
+    document.getElementById("disableAllJobsBtn").addEventListener("click", disableAllJobs);
+    element.render("tab");
   }
 
   function ensureAdmin() {
@@ -123,6 +159,88 @@ layui.use(["layer", "element"], function () {
         tr.innerHTML = "<td>" + u.id + "</td><td>" + esc(u.email) + "</td><td>" + esc(u.nickname)
           + "</td><td>" + esc(u.role) + "</td><td>" + esc(u.status) + "</td><td>" + localTime(u.last_login_at) + "</td>";
         body.appendChild(tr);
+      });
+    });
+  }
+
+  function formatJobTime(job) {
+    if (!job || job.hour == null || job.minute == null) return "-";
+    var h = Number(job.hour || 0);
+    var m = Number(job.minute || 0);
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
+
+  function loadJobs(page) {
+    page = page || 1;
+    api("/api/v1/admin/clockin-jobs?page=" + page + "&pageSize=50").then(function (r) {
+      if (!r.ok) {
+        layer.msg((r.data && r.data.message) || "加载打卡任务失败");
+        return;
+      }
+      var d = (r.data && r.data.data) || {};
+      var jobs = d.items || [];
+      var enabledCount = jobs.filter(function (job) { return job.enabled; }).length;
+      var summary = document.getElementById("jobsSummary");
+      if (summary) summary.textContent = "共 " + Number(d.total || jobs.length) + " 个任务，当前页启用 " + enabledCount + " 个";
+
+      var body = document.getElementById("jobsBody");
+      if (!body) return;
+      body.innerHTML = "";
+      if (!jobs.length) {
+        var empty = document.createElement("tr");
+        empty.innerHTML = '<td colspan="7" style="text-align:center;color:#999;">暂无打卡任务</td>';
+        body.appendChild(empty);
+        return;
+      }
+      jobs.forEach(function (job) {
+        var tr = document.createElement("tr");
+        var statusClass = job.enabled ? "status-on" : "status-off";
+        var statusText = job.enabled ? "已启用" : "已禁用";
+        var actionText = job.enabled ? "禁用" : "启用";
+        var actionClass = job.enabled ? "layui-btn-primary" : "layui-btn-normal";
+        tr.innerHTML = "<td>" + job.id + "</td><td>" + esc(job.email) + "</td><td>" + esc(job.nickname)
+          + "</td><td><span class='status-pill " + statusClass + "'>" + statusText + "</span></td>"
+          + "<td>" + formatJobTime(job) + "</td><td>" + localTime(job.last_run_at) + "</td>"
+          + "<td><button type='button' class='layui-btn layui-btn-sm " + actionClass + "' data-job-id='" + job.id
+          + "' data-enabled='" + (job.enabled ? "0" : "1") + "'>" + actionText + "</button></td>";
+        body.appendChild(tr);
+      });
+      Array.prototype.forEach.call(body.querySelectorAll("button[data-job-id]"), function (btn) {
+        btn.addEventListener("click", function () {
+          setJobEnabled(Number(btn.getAttribute("data-job-id")), btn.getAttribute("data-enabled") === "1");
+        });
+      });
+    });
+  }
+
+  function setJobEnabled(jobID, enabled) {
+    api("/api/v1/admin/clockin-jobs/" + encodeURIComponent(jobID), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: enabled })
+    }).then(function (r) {
+      if (!r.ok) {
+        layer.msg((r.data && r.data.message) || "更新打卡任务失败");
+        return;
+      }
+      layer.msg(enabled ? "打卡任务已启用" : "打卡任务已禁用");
+      loadJobs();
+      loadLogs();
+    });
+  }
+
+  function disableAllJobs() {
+    layer.confirm("确定要禁用所有打卡任务吗？", function (idx) {
+      layer.close(idx);
+      api("/api/v1/admin/clockin-jobs/disable-all", { method: "POST" }).then(function (r) {
+        if (!r.ok) {
+          layer.msg((r.data && r.data.message) || "一键禁用失败");
+          return;
+        }
+        var count = Number((r.data.data && r.data.data.disabled_count) || 0);
+        layer.msg("已禁用 " + count + " 个打卡任务");
+        loadJobs();
+        loadLogs();
       });
     });
   }
@@ -199,9 +317,11 @@ layui.use(["layer", "element"], function () {
     });
   }
 
+  installJobsTab();
+
   ensureAdmin().then(function (ok) {
     if (!ok) return;
-    loadUsers(); loadRuns(); loadLogs();
+    loadUsers(); loadJobs(); loadRuns(); loadLogs();
   });
 
   document.getElementById("back").addEventListener("click", function () { location.href = "/dashboard"; });
